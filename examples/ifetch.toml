@@ -72,6 +72,29 @@ expect = 0
 description = "phone numbers and addresses never reach application logs"
 
 
+# --- irreversible: runner only ---
+# Money and messages cannot be taken back. These go in scripts, always:
+#
+#   pipeline/payout_run.sh    reconcile -> verify escrow -> disburse -> record
+#   pipeline/refund.sh        the only path to reversing a charge
+#   pipeline/send_sms.sh      real phones, real people, real cost
+#
+# Improvise freely on matching logic and pricing models.
+
+[[check]]
+name = "payouts_go_through_the_runner"
+cmd = "python scripts/assert_no_adhoc_disbursement.py"
+expect = 0
+description = "nothing calls the disbursement API outside pipeline/payout_run.sh"
+
+[[check]]
+name = "payout_preflight"
+cmd = "python -m ifetch.preflight_payout"
+expect = 0
+description = "escrow balances reconcile before a single naira moves"
+timeout = 120
+
+
 # --- NOT checkable ---
 # Is the take-rate fair? Will runners in Lagos actually adopt this? Is the
 # trust model right for the market? Those are your calls, and field feedback.

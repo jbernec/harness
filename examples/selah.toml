@@ -61,6 +61,22 @@ expect = 0
 description = "a hand-reviewed set of passages keeps its expected cross-refs (regression only)"
 
 
+# --- irreversible: runner only ---
+# Rebuilding the index and publishing commentary are ordered procedures with
+# side effects users see. Put them in scripts so no step gets dropped:
+#
+#   pipeline/rebuild_index.sh   parse -> resolve -> validate -> swap
+#   pipeline/publish.sh         the only path to live commentary
+#
+# Improvise freely on ranking heuristics, cross-reference scoring and UI.
+
+[[check]]
+name = "index_rebuild_is_atomic"
+cmd = "python -m pytest tests/test_index_swap.py -q"
+expect = 0
+description = "a half-built index never becomes the live one"
+
+
 # --- layer 2: human gate, deliberately not automated ---
 # Interpretation quality, doctrinal soundness, whether a cross-reference is
 # meaningful rather than merely lexical - these go to the Divine Council.

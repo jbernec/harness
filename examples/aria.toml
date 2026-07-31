@@ -74,6 +74,23 @@ expect = 0
 description = "live credentials are unreachable until this check is deliberately removed"
 
 
+# --- irreversible: runner only, never improvised ---
+# Submitting orders and going live are one-way doors. They belong in
+# scripts, not in whatever the agent types that day.
+#
+#   pipeline/submit_orders.sh   the only path to the broker
+#   pipeline/go_live.sh         the only path out of paper mode
+#
+# Improvise freely on strategy ideas, indicators and backtests - being
+# wrong there costs a git checkout.
+
+[[check]]
+name = "orders_go_through_the_runner"
+cmd = "python scripts/assert_no_adhoc_broker_calls.py"
+expect = 0
+description = "nothing calls the broker API outside pipeline/submit_orders.sh"
+
+
 # --- the objective check ---
 # Defined here so `spec coverage` can see R-006 is accounted for, but you
 # run it ONCE, after the strategy is frozen. Running it, tuning, and running
