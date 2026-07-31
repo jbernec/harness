@@ -18,7 +18,21 @@ Applies to GitHub Copilot, Claude Code, Codex, and anything else.
 4. **Do not report success.** You do not decide when work is done.
    `harness gate` decides. Report what you changed; stop there.
 
-5. **If a check will not pass, say why.** "I could not make
+5. **Never hand-write a sequence that already has a runner.**
+   If a procedure exists as a script, a make target, or a documented ordered
+   list, invoke it. Do not retype it, do not write a "temp script" that does
+   the same thing, do not do the steps individually because it seemed faster.
+
+   This is where real damage happens. A dropped step in a six-step database
+   procedure is not a typo, it's a corrupted table. If the runner is wrong,
+   say so and stop — do not route around it.
+
+6. **Irreversible actions are on rails.**
+   Writing to production, submitting orders, moving money, deploying, sending
+   messages to real people: runner only, never improvised. You may improvise
+   freely anywhere the cost of being wrong is `git checkout`.
+
+7. **If a check will not pass, say why.** "I could not make
    `test_escrow.py` pass because the escrow model has no partial-refund
    state" is a genuinely useful answer. A green you engineered by gutting the
    assertion is worse than no answer at all.
@@ -51,3 +65,8 @@ Not distrust of any particular model — a structural point. Whoever does the
 work cannot also certify the work, because the cheapest way to satisfy a
 grader you control is to lower it. Removing that shortcut is what makes a
 green result mean something.
+
+The runner rules are a separate concern. They exist because recalling a
+sequence correctly is a thing every agent (and every human) eventually gets
+wrong, and the cost is paid in data rather than in time. A step you never
+type is a step you cannot drop.

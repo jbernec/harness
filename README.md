@@ -299,6 +299,81 @@ Templates: [`spec.template.md`](spec.template.md),
 
 ---
 
+## Improvisation vs runners
+
+There's a real tension here: lock everything down and you kill the thinking;
+lock nothing down and an agent will improvise a six-step database procedure
+from memory and drop a step.
+
+The way out is that these two things operate on different questions:
+
+- **Ideation** is *what should we do?* — keep this free
+- **Improvisation** is *how do I execute something already known?* — remove this
+
+You only ever want to eliminate the second, and only where a correct sequence
+already exists. Nothing is lost. Nobody had a creative breakthrough while
+retyping a migration sequence.
+
+### The line: is the action reversible?
+
+That's the whole test.
+
+| | Reversible | Irreversible |
+|---|---|---|
+| **Examples** | edit a file, run tests, draft a query, prototype | write to prod, submit an order, send money, deploy, email users |
+| **How** | improvise freely | runner only |
+| **Why** | cost of a mistake is `git checkout` | cost of a mistake is permanent |
+
+An agent that can't experiment is useless. An agent that can improvise a
+payout script is dangerous. Same agent, different blast radius.
+
+### The promotion rule
+
+You don't design runners up front — you'd be guessing. You promote them:
+
+```
+1st time doing it   improvise, it's exploration
+2nd time, same way  it's a procedure now -> write the runner
+                    delete the prose version so it can't be followed by hand
+```
+
+Watch for the second time. That's the signal.
+
+Corollary, and the one that actually matters: **the same failure twice means
+a check is missing.** Not "be more careful" — a resolution isn't a mechanism.
+First occurrence, fix and log it. Second occurrence, stop and write the check
+before you continue.
+
+### What it looks like per project
+
+| Project | Improvise | Runner only |
+|---|---|---|
+| ETL | query shapes, schema design, transformation logic | migrations, the load sequence, backfills |
+| ARIA | strategy ideas, indicators, backtests | order submission, position sizing, live release |
+| SELAH | cross-reference heuristics, ranking, UI | index rebuilds, publishing commentary |
+| iFetch | matching logic, pricing models | payouts, refunds, SMS sends |
+
+Same shape everywhere: **thinking is free, side effects are on rails.**
+
+### Cheap preflight beats expensive rollback
+
+A precondition check that fails in two seconds is worth more than a
+transaction that rolls back after forty minutes. Both save your data; only
+one saves your afternoon.
+
+```toml
+[[check]]
+name = "preconditions"
+cmd = "python -m etl.preflight"
+description = "assert the world is as expected before doing anything expensive"
+```
+
+Keep the transaction too. It's the last line, not the first.
+
+See [`examples/pipeline.toml`](examples/pipeline.toml).
+
+---
+
 ## What this cannot do
 
 Be honest about the boundary. A check can verify:
