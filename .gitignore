@@ -1,0 +1,17 @@
+# The trace and the key live in ~/.harness, never in the repo.
+# If you ever see these here, something is misconfigured.
+.harness/
+*.jsonl
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.env
+.DS_Store

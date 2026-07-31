@@ -1,0 +1,39 @@
+# Template. Copy to the root of the project you want to verify.
+#
+# A check is a command plus the exit code that counts as passing.
+# Nothing else. No opinions, no "should", no judgement calls.
+
+project = "my-project"
+
+# Paths the agent must not touch. If anything here changed since HEAD,
+# the gate refuses. New untracked files count too.
+protected = ["tests/"]
+
+# Build artifacts to ignore inside protected paths, since running a check
+# creates them. Omit this line to accept the sane defaults.
+# guard_ignore = ["__pycache__/", "*.pyc", ".pytest_cache/"]
+
+
+[[check]]
+name = "unit"
+cmd = "python -m pytest tests/ -q"
+expect = 0
+description = "the whole unit suite passes"
+timeout = 900
+
+
+# A check may assert that something FAILS. Use `expect` for that.
+# [[check]]
+# name = "rejects_bad_input"
+# cmd = "python -m myapp validate bad.json"
+# expect = 1
+# description = "malformed input is rejected, not silently accepted"
+
+
+# Determinism is one of the few things worth checking on an AI feature:
+# not "is the answer good" (a human decides that) but "is it stable".
+# [[check]]
+# name = "determinism"
+# cmd = "python scripts/run_twice_and_diff.py"
+# expect = 0
+# description = "same input, same output, twice in a row"

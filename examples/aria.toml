@@ -1,0 +1,73 @@
+# ARIA - agentic equities trader.
+# Objective: beat VTI by a defined margin over a defined window.
+#
+# Read this first:
+# The hard part of a trading harness is not the code, it is refusing to let
+# the strategy see the data it will be judged on. Split your history now:
+#
+#   data/train/   the agent may look at this freely
+#   data/holdout/ NOBODY looks at this until the strategy is frozen
+#
+# "Frozen" means committed and tagged. If you peek at the holdout, tune,
+# and re-run, the result is meaningless - you have fitted to the answer key.
+# You get ONE honest run per freeze. That is the whole discipline.
+
+project = "aria"
+protected = ["tests/", "data/holdout/"]
+
+
+# --- mechanical checks: things a command can settle ---
+
+[[check]]
+name = "position_limit"
+cmd = "python -m pytest tests/test_risk.py -q"
+expect = 0
+description = "no single position exceeds its cap, ever"
+
+[[check]]
+name = "order_validity"
+cmd = "python -m pytest tests/test_orders.py -q"
+expect = 0
+description = "every generated order is well-formed and within the universe"
+
+[[check]]
+name = "no_trades_outside_universe"
+cmd = "python -m pytest tests/test_universe.py -q"
+expect = 0
+description = "the agent cannot buy something not on the approved list"
+
+[[check]]
+name = "determinism"
+cmd = "python scripts/replay_twice.py --data data/train"
+expect = 0
+description = "same market data in, same orders out - twice"
+
+[[check]]
+name = "kill_switch"
+cmd = "python -m pytest tests/test_killswitch.py -q"
+expect = 0
+description = "drawdown past the limit halts trading and does not resume itself"
+
+[[check]]
+name = "paper_before_live"
+cmd = "python scripts/assert_paper_mode.py"
+expect = 0
+description = "live credentials are unreachable until this check is deliberately removed"
+
+
+# --- the objective check: run ONCE, after freeze ---
+# Keep it commented until the strategy is frozen. Uncommenting it is a
+# deliberate act, and the trace will record exactly when you did it.
+#
+# [[check]]
+# name = "beats_vti_holdout"
+# cmd = "python scripts/backtest.py --data data/holdout --benchmark VTI --min-excess 0.02"
+# expect = 0
+# description = "excess return over VTI on data the strategy has never seen"
+# timeout = 3600
+
+
+# --- NOT checkable, do not fake it ---
+# "is this strategy sound", "is the risk appetite right for me",
+# "should I actually deploy capital" -> you are the gate. A green harness
+# means the machinery works, not that the idea is good.

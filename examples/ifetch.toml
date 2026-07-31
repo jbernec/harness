@@ -1,0 +1,78 @@
+# iFetch - task marketplace for the Nigerian / West African market.
+#
+# Read this first:
+# Marketplace bugs cost real money and real trust. The checks that matter
+# most here are the ones about money moving and about the app working on a
+# bad connection - not feature count.
+#
+# Local constraints are first-class requirements, not edge cases:
+#   - NGN currency, minor units, no floats
+#   - Paystack / Flutterwave webhooks that arrive twice
+#   - patchy connectivity, so offline queue + replay
+#   - phone number formats (+234, 0803..., 234...)
+
+project = "ifetch"
+protected = ["tests/"]
+
+
+# --- money: the checks you cannot compromise on ---
+
+[[check]]
+name = "money_is_integer_minor_units"
+cmd = "python -m pytest tests/test_money.py -q"
+expect = 0
+description = "no float ever touches a naira amount"
+
+[[check]]
+name = "payment_idempotency"
+cmd = "python -m pytest tests/test_payments.py -q"
+expect = 0
+description = "the same webhook delivered twice charges once"
+
+[[check]]
+name = "payout_never_exceeds_escrow"
+cmd = "python -m pytest tests/test_escrow.py -q"
+expect = 0
+description = "you cannot pay out money the platform is not holding"
+
+[[check]]
+name = "pricing_is_deterministic"
+cmd = "python -m pytest tests/test_pricing.py -q"
+expect = 0
+description = "same job, same distance, same time -> same quote"
+
+
+# --- local reality ---
+
+[[check]]
+name = "offline_queue_replays"
+cmd = "python -m pytest tests/test_offline.py -q"
+expect = 0
+description = "a job created offline syncs exactly once when the network returns"
+
+[[check]]
+name = "ng_phone_normalisation"
+cmd = "python -m pytest tests/test_phone.py -q"
+expect = 0
+description = "+2348031234567, 08031234567, 2348031234567 normalise to one value"
+
+
+# --- matching and safety ---
+
+[[check]]
+name = "matching_respects_radius"
+cmd = "python -m pytest tests/test_matching.py -q"
+expect = 0
+description = "no runner is matched outside their service radius"
+
+[[check]]
+name = "no_pii_in_logs"
+cmd = "python scripts/scan_logs_for_pii.py"
+expect = 0
+description = "phone numbers and addresses never reach application logs"
+
+
+# --- NOT checkable ---
+# Is the take-rate fair? Will runners in Lagos actually adopt this? Is the
+# trust model right for the market? Those are your calls, and field feedback.
+# Keep them out of checks.toml so the green never implies more than it should.

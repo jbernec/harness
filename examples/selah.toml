@@ -1,0 +1,67 @@
+# SELAH - AI-powered scripture cross-referencing, plus a commentary layer
+# from the His Divine Council community.
+#
+# Read this first:
+# This project has two layers and only one of them is machine-checkable.
+#
+#   Layer 1  mechanics  - does the reference resolve? is output stable?   -> checks
+#   Layer 2  meaning    - is this interpretation sound?                   -> humans
+#
+# Do not write a check called "interpretation_is_correct". You cannot.
+# The Divine Council IS the gate for layer 2, and that is legitimate -
+# a gate is allowed to be a person. What is NOT allowed is the app
+# grading its own theology and reporting success.
+
+project = "selah"
+protected = ["tests/", "fixtures/"]
+
+
+# --- layer 1: mechanics ---
+
+[[check]]
+name = "refs_resolve"
+cmd = "python -m pytest tests/test_refs.py -q"
+expect = 0
+description = "every cross-reference points at a verse that actually exists"
+
+[[check]]
+name = "no_dangling_refs"
+cmd = "python scripts/check_dangling.py"
+expect = 0
+description = "no reference to a book/chapter/verse outside the canon"
+
+[[check]]
+name = "canonical_range_parsing"
+cmd = "python -m pytest tests/test_parsing.py -q"
+expect = 0
+description = "'Rom 8:1-4', 'Romans 8.1-4', '1 Cor 13' all parse identically"
+
+[[check]]
+name = "determinism"
+cmd = "python scripts/same_query_twice.py"
+expect = 0
+description = "same passage queried twice returns the same reference set"
+
+[[check]]
+name = "commentary_requires_verse"
+cmd = "python -m pytest tests/test_commentary.py -q"
+expect = 0
+description = "no commentary can be attached without an anchoring verse"
+
+[[check]]
+name = "layers_stay_separate"
+cmd = "python -m pytest tests/test_layer_separation.py -q"
+expect = 0
+description = "community commentary is never returned as if it were scripture"
+
+[[check]]
+name = "golden_passages"
+cmd = "python -m pytest tests/test_golden.py -q"
+expect = 0
+description = "a hand-reviewed set of passages keeps its expected cross-refs (regression only)"
+
+
+# --- layer 2: human gate, deliberately not automated ---
+# Interpretation quality, doctrinal soundness, whether a cross-reference is
+# meaningful rather than merely lexical - these go to the Divine Council.
+# Record their verdict as a human decision. Do not synthesise a check for it.
