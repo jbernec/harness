@@ -6,6 +6,70 @@ Zero dependencies. Python 3.11+. Drop it onto any project.
 
 ---
 
+## Start here
+
+Three separate failure modes. Find yours, do the fix, ignore the rest of
+this file until you hit another one.
+
+### 1. The agent says "done" and it isn't
+
+Fix: **red first + gate.**
+
+```bash
+harness init
+harness red mycheck     # it must FAIL before the work starts
+# agent works
+harness gate mycheck    # decides. not the agent.
+```
+
+→ [Use](#use)
+
+### 2. The agent dropped a step in a procedure
+
+Fix: **a runner.** Put the commands in a file. Point the spec at the file.
+
+```bash
+# pipeline/run.sh
+python -m etl.backfill_coords
+python -m etl.delete_alerts
+python -m etl.harmonize_smart
+```
+
+```markdown
+## §4 Procedure
+Run `pipeline/run.sh`.
+```
+
+Six steps became one command. Nothing gets retyped, so nothing gets dropped.
+**Delete the written-out steps** — if they stay, someone follows them by hand.
+
+→ [Improvisation vs runners](#improvisation-vs-runners)
+
+### 3. The spec says one thing, the code does another
+
+Fix: **numbered requirements + fingerprints.**
+
+```markdown
+### R-002  Position limit
+No position may exceed 20% of book value.
+check: position_limit
+```
+
+```bash
+harness spec bless      # "I've read these, they agree"
+harness spec sync       # goes RED the moment the spec text changes
+```
+
+→ [Spec drift](#spec-drift)
+
+---
+
+**These are independent.** Runners need no IDs. IDs need no runners. Take
+only what your problem needs — adopting all three at once is how this ends
+up unused.
+
+---
+
 ## The problem
 
 You ask an agent to fix something. It says "Done! All tests pass." ✅
@@ -307,59 +371,87 @@ Templates: [`spec.template.md`](spec.template.md),
 
 ## Improvisation vs runners
 
-There's a real tension here: lock everything down and you kill the thinking;
-lock nothing down and an agent will improvise a six-step database procedure
-from memory and drop a step.
+### The fix, first
 
-The way out is that these two things operate on different questions:
+If a procedure has steps that must run in order, put them in a file:
 
-- **Ideation** is *what should we do?* — keep this free
-- **Improvisation** is *how do I execute something already known?* — remove this
+```bash
+# pipeline/run.sh
+set -euo pipefail
+python -m etl.backfill_coords
+python -m etl.delete_alerts
+python -m etl.harmonize_smart
+```
 
-You only ever want to eliminate the second, and only where a correct sequence
-already exists. Nothing is lost. Nobody had a creative breakthrough while
-retyping a migration sequence.
+Then delete the steps from your spec and write one line:
+
+> Run `pipeline/run.sh`.
+
+Done. Nothing is retyped, so nothing can be dropped. `set -e` means a failed
+step stops the chain instead of continuing into a corrupted state.
+
+**Leaving the written-out steps in the spec defeats it** — someone will
+follow them by hand. Delete them.
+
+### Why this comes up
+
+From a real incident: an agent was told to run a six-step database
+procedure documented in a spec. It hand-wrote a temp script from memory
+instead, dropped a step, hit a foreign-key violation. Twice in one hour.
+Its own summary: *"improvising the sequence rather than executing the spec."*
+
+It called that a discipline problem. It's a design problem:
+
+> **A sequence that must be followed exactly should not exist as prose.**
+
+If the only thing between you and a corrupted table is someone retyping six
+steps in order, that fails eventually.
+
+### But doesn't this stifle ideation?
+
+No, because these operate on different questions:
+
+- **Ideation** — *what should we do?* → keep free
+- **Improvisation** — *how do I execute something already known?* → remove
+
+You only remove the second, and only where a correct sequence already
+exists. Nobody has a creative breakthrough retyping a migration sequence.
 
 ### The line: is the action reversible?
 
-That's the whole test.
-
 | | Reversible | Irreversible |
 |---|---|---|
-| **Examples** | edit a file, run tests, draft a query, prototype | write to prod, submit an order, send money, deploy, email users |
+| **Examples** | edit a file, run tests, prototype, draft a query | write to prod, submit an order, send money, deploy, email users |
 | **How** | improvise freely | runner only |
-| **Why** | cost of a mistake is `git checkout` | cost of a mistake is permanent |
+| **Why** | mistake costs `git checkout` | mistake is permanent |
 
 An agent that can't experiment is useless. An agent that can improvise a
 payout script is dangerous. Same agent, different blast radius.
 
-### The promotion rule
+### When to write one
 
-You don't design runners up front — you'd be guessing. You promote them:
+Don't design runners up front — you'd be guessing. Promote them:
 
 ```
 1st time doing it   improvise, it's exploration
 2nd time, same way  it's a procedure now -> write the runner
-                    delete the prose version so it can't be followed by hand
+                    delete the prose version
 ```
 
-Watch for the second time. That's the signal.
+Corollary, and the one that matters: **the same failure twice means a check
+is missing.** "Be more careful" is not a mechanism. First occurrence, fix
+and log it. Second occurrence, stop and write the check.
 
-Corollary, and the one that actually matters: **the same failure twice means
-a check is missing.** Not "be more careful" — a resolution isn't a mechanism.
-First occurrence, fix and log it. Second occurrence, stop and write the check
-before you continue.
-
-### What it looks like per project
+### Per project
 
 | Project | Improvise | Runner only |
 |---|---|---|
-| ETL | query shapes, schema design, transformation logic | migrations, the load sequence, backfills |
-| ARIA | strategy ideas, indicators, backtests | order submission, position sizing, live release |
-| SELAH | cross-reference heuristics, ranking, UI | index rebuilds, publishing commentary |
-| iFetch | matching logic, pricing models | payouts, refunds, SMS sends |
+| ETL | query shapes, schema design, transformation logic | migrations, load sequence, backfills |
+| Trading | strategy ideas, indicators, backtests | order submission, position sizing, live release |
+| Content/AI | ranking heuristics, prompts, UI | index rebuilds, publishing |
+| Marketplace | matching logic, pricing models | payouts, refunds, SMS sends |
 
-Same shape everywhere: **thinking is free, side effects are on rails.**
+Same shape: **thinking is free, side effects are on rails.**
 
 ### Cheap preflight beats expensive rollback
 

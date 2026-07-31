@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+#
+# A runner. Copy this shape, replace the steps.
+#
+# The point: these commands live in a file, so nobody retypes them and
+# nobody drops one. Your spec should say "Run pipeline/run.sh" and nothing
+# more. If the steps are also written out in prose somewhere, delete them -
+# otherwise someone follows the prose by hand and you're back where you
+# started.
+
+set -euo pipefail   # -e stop on first failure  -u catch typos  -o pipefail
+
+# Cheap assertions first. Two seconds here beats forty minutes and a
+# rollback. Exit non-zero and -e halts everything below.
+python -m etl.preflight
+
+python -m etl.backfill_coords
+python -m etl.delete_alerts
+python -m etl.harmonize_smart
+python -m etl.harmonize_smart_compliance
+python -m etl.counts
+python -m etl.vacuum
+
+echo "pipeline complete"
