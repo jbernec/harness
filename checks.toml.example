@@ -5,9 +5,12 @@
 
 project = "my-project"
 
+# Where the numbered requirements live.
+spec = "spec.md"
+
 # Paths the agent must not touch. If anything here changed since HEAD,
 # the gate refuses. New untracked files count too.
-protected = ["tests/"]
+protected = ["tests/", "spec.md"]
 
 # Build artifacts to ignore inside protected paths, since running a check
 # creates them. Omit this line to accept the sane defaults.
@@ -20,6 +23,34 @@ cmd = "python -m pytest tests/ -q"
 expect = 0
 description = "the whole unit suite passes"
 timeout = 900
+
+
+# These two keep spec.md and checks.toml honest with each other.
+# Without them, drift is something you have to remember to notice.
+
+[[check]]
+name = "spec_coverage"
+cmd = "harness spec coverage"
+expect = 0
+description = "every requirement has a check, or is marked gate: human"
+
+[[check]]
+name = "spec_sync"
+cmd = "harness spec sync"
+expect = 0
+description = "no requirement changed without its check being reviewed"
+
+
+# Link a check to the requirement it settles. `requirement_hash` is written
+# by `harness spec bless` - never type it yourself. When the requirement's
+# wording changes, the hash stops matching and this check goes red.
+#
+# [[check]]
+# name = "position_limit"
+# requirement = "R-002"
+# requirement_hash = ""
+# cmd = "python -m pytest tests/test_risk.py -q"
+# expect = 0
 
 
 # A check may assert that something FAILS. Use `expect` for that.

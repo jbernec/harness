@@ -7,6 +7,10 @@
     harness guard                confirm protected paths were not edited
     harness verify               verify the trace chain
     harness log [name]           print recorded evidence
+    harness spec list            requirements and how each is settled
+    harness spec coverage        fail if a requirement has no check and no gate
+    harness spec sync            fail if a requirement changed after review
+    harness spec bless [id]      record that a check matches the spec as written
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from .check import load_config, run
 from .gate import evaluate
 from .guard import check_protected
 from .trace import Trace
+from . import spec
 
 OK = "PASS"
 NO = "FAIL"
@@ -154,6 +159,75 @@ def cmd_log(cfg, args, cwd, trace) -> int:
     return 0
 
 
+def cmd_spec(cfg, args, cwd, trace) -> int:
+    """Requirements, and whether each one is honestly accounted for."""
+    spec_path = cwd / cfg.spec
+    try:
+        reqs = spec.parse(spec_path)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"spec error: {exc}", file=sys.stderr)
+        return 2
+
+    action = args.spec_action
+
+    if action == "list":
+        if args.json:
+            print(json.dumps([
+                {
+                    "id": r.id,
+                    "title": r.title,
+                    "settled_by": r.settled_by,
+                    "check": r.check,
+                    "gate": r.gate,
+                    "fingerprint": r.fingerprint,
+                }
+                for r in reqs
+            ], indent=2))
+            return 0
+        print(f"spec: {spec_path}\n")
+        for r in reqs:
+            how = {"check": f"check {r.check}", "human": f"gate {r.gate}",
+                   "removed": "removed", "nothing": "NOTHING - unsettled"}[r.settled_by]
+            print(f"  {r.id:<14} {r.fingerprint}  {how}")
+            print(f"  {'':<14} {r.title}")
+        return 0
+
+    if action == "coverage":
+        result = spec.coverage(reqs, set(cfg.checks))
+        _emit(result, args.json)
+        if not args.json:
+            print(f"{result['total']} live requirements: "
+                  f"{result['by_check']} by check, {result['by_human']} by human gate")
+            print(f"{OK if result['ok'] else NO}  {result['reason']}")
+        return 0 if result["ok"] else 1
+
+    if action == "sync":
+        result = spec.sync(reqs, cfg.checks)
+        _emit(result, args.json)
+        if not args.json:
+            print(f"{OK if result['ok'] else NO}  {result['reason']}")
+        return 0 if result["ok"] else 1
+
+    if action == "bless":
+        cfg_path = Path(args.config) if Path(args.config).is_absolute() else cwd / args.config
+        targets = [r for r in reqs if r.check and not r.removed]
+        if args.id:
+            targets = [r for r in targets if r.id == args.id]
+            if not targets:
+                print(f"no requirement '{args.id}' with a check", file=sys.stderr)
+                return 2
+
+        for r in targets:
+            if spec.bless(cfg_path, r.check, r.fingerprint):
+                print(f"blessed  {r.id:<14} {r.fingerprint}  -> check {r.check}")
+            else:
+                print(f"skipped  {r.id:<14} check '{r.check}' not found in {args.config}", file=sys.stderr)
+        print("\nYou have stated that these checks match the spec as written.")
+        return 0
+
+    return 2
+
+
 COMMANDS = {
     "list": cmd_list,
     "red": cmd_red,
@@ -162,6 +236,7 @@ COMMANDS = {
     "guard": cmd_guard,
     "verify": cmd_verify,
     "log": cmd_log,
+    "spec": cmd_spec,
 }
 
 
@@ -182,6 +257,14 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("verify")
     p_log = sub.add_parser("log")
     p_log.add_argument("name", nargs="?")
+
+    p_spec = sub.add_parser("spec")
+    spec_sub = p_spec.add_subparsers(dest="spec_action", required=True)
+    spec_sub.add_parser("list")
+    spec_sub.add_parser("coverage")
+    spec_sub.add_parser("sync")
+    p_bless = spec_sub.add_parser("bless")
+    p_bless.add_argument("id", nargs="?", help="requirement id, or omit for all")
 
     args = parser.parse_args(argv)
     cwd = Path(args.cwd).resolve()

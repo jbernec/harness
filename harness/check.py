@@ -34,6 +34,8 @@ class Check:
     expect: int = 0
     description: str = ""
     timeout: int = DEFAULT_TIMEOUT
+    requirement: str = ""
+    requirement_hash: str = ""
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,7 @@ class Config:
     checks: dict[str, Check]
     protected: list[str]
     guard_ignore: list[str]
+    spec: str
 
 
 def load_config(path: Path) -> Config:
@@ -76,6 +79,8 @@ def load_config(path: Path) -> Config:
             expect=int(entry.get("expect", 0)),
             description=entry.get("description", ""),
             timeout=int(entry.get("timeout", DEFAULT_TIMEOUT)),
+            requirement=entry.get("requirement", ""),
+            requirement_hash=entry.get("requirement_hash", ""),
         )
     if not checks:
         raise ValueError("config defines no checks")
@@ -85,6 +90,7 @@ def load_config(path: Path) -> Config:
         checks=checks,
         protected=list(data.get("protected", ["tests/"])),
         guard_ignore=list(data.get("guard_ignore", DEFAULT_GUARD_IGNORE)),
+        spec=data.get("spec", "spec.md"),
     )
 
 

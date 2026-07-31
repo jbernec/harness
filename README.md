@@ -180,6 +180,125 @@ That judgement stays with a human.
 
 ---
 
+## Spec drift
+
+A spec says what you intend. A check proves what you built. They come apart
+quietly unless something forces them together.
+
+Number every requirement in `spec.md`:
+
+```markdown
+### R-002  Position limit
+No single position may exceed 20% of book value.
+
+check: position_limit
+
+### R-007  The strategy is sound
+No command settles this.
+
+gate: human
+```
+
+Point the check back at it:
+
+```toml
+[[check]]
+name = "position_limit"
+requirement = "R-002"
+cmd = "python -m pytest tests/test_risk.py -q"
+```
+
+Then:
+
+```bash
+harness spec list        # what have I got, and how is each one settled?
+harness spec coverage    # is anything unaccounted for?
+harness spec bless       # I have read these; record their fingerprints
+harness spec sync        # has anything changed since I read it?
+```
+
+`bless` writes a fingerprint of each requirement's text into `checks.toml`.
+You never type it. Now change 20% to 25% in the spec:
+
+```
+FAIL  changed since last reviewed -> R-002: spec is a0c325, check recorded 7fe6cd
+```
+
+The gate will not open until you look at the check and either update it or
+re-bless it. **Drift stops being something you have to notice and becomes
+something that goes red.**
+
+Add these two to `checks.toml` and they run like any other check:
+
+```toml
+[[check]]
+name = "spec_coverage"
+cmd = "harness spec coverage"
+description = "every requirement has a check, or is marked gate: human"
+
+[[check]]
+name = "spec_sync"
+cmd = "harness spec sync"
+description = "no requirement changed without its check being reviewed"
+```
+
+### Three rules for IDs
+
+1. **Never change an ID.** Traces point at them.
+2. **Never reuse one.** `harness spec list` rejects duplicates.
+3. **Retire, don't delete** — mark `[REMOVED]` and leave it in place, so old
+   evidence still resolves.
+
+### Every requirement ends one of two ways
+
+`check:` or `gate: human`. There is no third option, and that's the point.
+Marking something human-gated isn't an admission of failure — it's the spec
+being honest that no command can settle it. What must never happen is a
+requirement nobody has decided how to settle. That's what `spec coverage`
+catches.
+
+---
+
+## Memory
+
+Agents forget. Sessions end. Models get swapped. Put durable memory in files,
+not in a model:
+
+```
+spec.md          what we're building, R-xxx numbered
+checks.toml      how we prove it
+decisions.md     why we chose X over Y, dated
+AGENTS.md        rules for agents
+~/.harness/      the trace: what actually happened
+```
+
+The three that hold history have **opposite rules**, and mixing them up is
+the common mistake:
+
+| File | You may | You may never |
+|---|---|---|
+| `spec.md` | edit it — it's the present | — |
+| `decisions.md` | append to the bottom | rewrite an old entry |
+| trace | nothing; the tool writes it | touch it |
+
+You can change the present. You cannot change the past. Superseding a
+decision means adding `D-021` and marking `D-008` as superseded — not
+editing D-008. The wrong turn is usually the most useful entry in the file;
+it's the reason you don't take it twice.
+
+**The test for whether your memory is in the right place:** a fresh session
+with zero context should be able to pick up the work by reading the repo. If
+it can't, the memory is in a chat log and it's already gone.
+
+`decisions.md` is the one people skip. Its trigger is human and it's one
+line: *you made a choice you'd have to explain in six months.* Three lines,
+then move on.
+
+Templates: [`spec.template.md`](spec.template.md),
+[`decisions.template.md`](decisions.template.md).
+
+---
+
 ## What this cannot do
 
 Be honest about the boundary. A check can verify:
@@ -207,9 +326,11 @@ harness/
   trace.py   HMAC-chained append-only log. Key lives outside the project.
   gate.py    The four-condition decision.
   guard.py   Agent must not edit its own tests. Fails closed.
-  cli.py     list | red | run | gate | guard | verify | log
-tests/       26 self-tests, including replays of the forgery attacks
+  spec.py    Numbered requirements, coverage, and drift fingerprints.
+  cli.py     list | red | run | gate | guard | verify | log | spec
+tests/       48 self-tests, including replays of the forgery attacks
 examples/    starting checks.toml for real project shapes
+spec.template.md, decisions.template.md
 ```
 
 ## Design notes

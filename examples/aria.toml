@@ -13,58 +13,79 @@
 # You get ONE honest run per freeze. That is the whole discipline.
 
 project = "aria"
-protected = ["tests/", "data/holdout/"]
+spec = "spec.md"
+protected = ["tests/", "data/holdout/", "spec.md"]
 
 
 # --- mechanical checks: things a command can settle ---
 
 [[check]]
+name = "spec_coverage"
+cmd = "harness spec coverage"
+expect = 0
+description = "every requirement has a check, or is marked gate: human"
+
+[[check]]
+name = "spec_sync"
+cmd = "harness spec sync"
+expect = 0
+description = "no requirement changed without its check being reviewed"
+
+[[check]]
 name = "position_limit"
+requirement = "R-002"
 cmd = "python -m pytest tests/test_risk.py -q"
 expect = 0
 description = "no single position exceeds its cap, ever"
 
 [[check]]
 name = "order_validity"
+requirement = "R-009"
 cmd = "python -m pytest tests/test_orders.py -q"
 expect = 0
 description = "every generated order is well-formed and within the universe"
 
 [[check]]
 name = "no_trades_outside_universe"
+requirement = "R-001"
 cmd = "python -m pytest tests/test_universe.py -q"
 expect = 0
 description = "the agent cannot buy something not on the approved list"
 
 [[check]]
 name = "determinism"
+requirement = "R-004"
 cmd = "python scripts/replay_twice.py --data data/train"
 expect = 0
 description = "same market data in, same orders out - twice"
 
 [[check]]
 name = "kill_switch"
+requirement = "R-003"
 cmd = "python -m pytest tests/test_killswitch.py -q"
 expect = 0
 description = "drawdown past the limit halts trading and does not resume itself"
 
 [[check]]
 name = "paper_before_live"
+requirement = "R-005"
 cmd = "python scripts/assert_paper_mode.py"
 expect = 0
 description = "live credentials are unreachable until this check is deliberately removed"
 
 
-# --- the objective check: run ONCE, after freeze ---
-# Keep it commented until the strategy is frozen. Uncommenting it is a
-# deliberate act, and the trace will record exactly when you did it.
-#
-# [[check]]
-# name = "beats_vti_holdout"
-# cmd = "python scripts/backtest.py --data data/holdout --benchmark VTI --min-excess 0.02"
-# expect = 0
-# description = "excess return over VTI on data the strategy has never seen"
-# timeout = 3600
+# --- the objective check ---
+# Defined here so `spec coverage` can see R-006 is accounted for, but you
+# run it ONCE, after the strategy is frozen. Running it, tuning, and running
+# again is how you fit to the answer key without noticing.
+
+[[check]]
+name = "beats_vti_holdout"
+requirement = "R-006"
+cmd = "python scripts/backtest.py --data data/holdout --benchmark VTI --min-excess 0.02"
+expect = 0
+description = "excess return over VTI on data the strategy has never seen"
+timeout = 3600
 
 
 # --- NOT checkable, do not fake it ---
