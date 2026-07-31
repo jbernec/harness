@@ -1,5 +1,6 @@
 """Command line interface.
 
+    harness init                 write starter files into an existing repo
     harness list                 show every check
     harness red <name>           run a check and require it to FAIL
     harness run <name>           run a check and record the result
@@ -23,6 +24,7 @@ from pathlib import Path
 from .check import load_config, run
 from .gate import evaluate
 from .guard import check_protected
+from .init import init
 from .trace import Trace
 from . import spec
 
@@ -228,6 +230,36 @@ def cmd_spec(cfg, args, cwd, trace) -> int:
     return 2
 
 
+def cmd_init(args, cwd) -> int:
+    """Write starter files into an existing repository."""
+    result = init(cwd, args.project)
+
+    if args.json:
+        print(json.dumps(result))
+        return 0
+
+    print(f"project: {result['project']}\n")
+    for f in result["written"]:
+        print(f"  created  {f}")
+    for f in result["skipped"]:
+        print(f"  kept     {f}  (already exists, left alone)")
+
+    print(f"\ndetected test command: {result['test_cmd']}")
+    print("""
+Next, in order:
+
+  1. Open checks.toml and confirm that test command is right.
+  2. harness red unit        -> it should FAIL. If it passes, the check is
+                               not testing what you think it is.
+  3. Write your objective at the top of spec.md. One sentence, one number.
+  4. Add requirements as things break, not all at once.
+  5. harness spec bless      -> record that the checks match the spec.
+
+You cannot recover red-first evidence for code that already works. That is
+fine. You get it from the next change onward, which is where it mattered.""")
+    return 0
+
+
 COMMANDS = {
     "list": cmd_list,
     "red": cmd_red,
@@ -266,8 +298,15 @@ def main(argv: list[str] | None = None) -> int:
     p_bless = spec_sub.add_parser("bless")
     p_bless.add_argument("id", nargs="?", help="requirement id, or omit for all")
 
+    p_init = sub.add_parser("init")
+    p_init.add_argument("--project", help="project name (defaults to the directory name)")
+
     args = parser.parse_args(argv)
     cwd = Path(args.cwd).resolve()
+
+    # init runs before a config exists, so it cannot require one.
+    if args.command == "init":
+        return cmd_init(args, cwd)
 
     try:
         cfg = load_config(Path(args.config) if Path(args.config).is_absolute() else cwd / args.config)
