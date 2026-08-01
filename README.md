@@ -30,17 +30,18 @@ Fix: **a runner.** Put the commands in a file. Point the spec at the file.
 
 ```bash
 # pipeline/run.sh
-python -m etl.backfill_coords
-python -m etl.delete_alerts
-python -m etl.harmonize_smart
+set -euo pipefail
+python -m app.migrate
+python -m app.load
+python -m app.reconcile
 ```
 
 ```markdown
-## §4 Procedure
+### Deploy procedure
 Run `pipeline/run.sh`.
 ```
 
-Six steps became one command. Nothing gets retyped, so nothing gets dropped.
+The steps became one command. Nothing gets retyped, so nothing gets dropped.
 **Delete the written-out steps** — if they stay, someone follows them by hand.
 
 → [Improvisation vs runners](#improvisation-vs-runners)
@@ -243,24 +244,24 @@ all learned the expensive way.
 
 ### 1. The check that copies what it guards
 
-You write a check to catch a constant being duplicated in two places. You
-hardcode the constant in the check. The check now finds **three** copies —
+You write a check to catch a value being duplicated in two places. You
+hardcode that value in the check. The check now finds **three** copies —
 including itself:
 
 ```
-assert 2 == 1
-hits: ['db/backfills/coords.sql', 'tests/test_drift.py']
+assert 3 == 2
+found in: ['src/config.py', 'src/legacy.py', 'tests/test_no_duplicates.py']
 ```
 
 A duplication check must **derive** its needle from the source, never repeat
 it:
 
 ```python
-# wrong - the test is now a third copy
-NEEDLE = "329850"
+# wrong - the check is now another copy
+LIMIT = "0.20"
 
-# right - one source of truth, the test reads it
-NEEDLE = re.search(r"utm_easting\s*=\s*(\d+)", SQL.read_text()).group(1)
+# right - one source of truth, the check reads it
+LIMIT = re.search(r"MAX_POSITION\s*=\s*([\d.]+)", SOURCE.read_text()).group(1)
 ```
 
 Same rule as `bless`: never type a value the tool can compute.
@@ -273,8 +274,8 @@ catches nothing. It is worse than no guard, because you think you're covered.
 Scope guards by **what actually caused harm**, not by what looks suspicious:
 
 ```
-too broad   any untracked tmp_*.py            <- blocks read-only probes
-right       untracked tmp_*.py that WRITES    <- catches only the real thing
+too broad   any scratch file in the tree      <- blocks exploration
+right       a scratch file that WRITES        <- catches only the real thing
 ```
 
 Read-only exploration is the reversible side of the line. Improvising there
@@ -286,12 +287,12 @@ Every guard needs testing **in both directions**, or you don't know which
 kind you built:
 
 ```bash
-# must FAIL
-printf 'cur.execute("DELETE FROM alerts")' > tmp_x.py
+# must FAIL - the thing it exists to catch
+<create the violation>
 python scripts/guard.py; echo "expect 1, got $?"
 
-# must PASS
-printf 'conn.set_session(readonly=True)' > tmp_y.py
+# must PASS - normal, legitimate work
+<create something harmless>
 python scripts/guard.py; echo "expect 0, got $?"
 ```
 
@@ -300,9 +301,9 @@ it's an obstacle. You need both.
 
 ### 4. The code nothing can reach
 
-A function that exists only in someone's temp script is invisible: no
-caller, no test, no runner path. It won't show up as broken because nothing
-runs it.
+A function that exists only in a scratch script is invisible: no caller, no
+test, no path from any entry point. It never shows up as broken because
+nothing runs it.
 
 Check reachability from the real entry point:
 
@@ -310,7 +311,7 @@ Check reachability from the real entry point:
 [[check]]
 name = "no_orphan_entrypoints"
 cmd = "python -m pytest tests/test_reachability.py -q"
-description = "every harmonize_* is reachable from STAGE_ORDER"
+description = "every registered handler is reachable from the entry point"
 ```
 
 Make it a test, not a script. An unreachable module should fail CI, not wait
@@ -323,7 +324,8 @@ is worse than no runner — build a second one and you've created the drift
 you were removing.
 
 ```bash
-grep -rn "STAGE_ORDER\|def main\|^run:" --include=*.py --include=Makefile .
+grep -rn "def main\|^run:\|entry_points\|\"scripts\"" \
+  --include=*.py --include=Makefile --include=package.json --include=*.toml .
 ```
 
 ---
@@ -473,9 +475,9 @@ If a procedure has steps that must run in order, put them in a file:
 ```bash
 # pipeline/run.sh
 set -euo pipefail
-python -m etl.backfill_coords
-python -m etl.delete_alerts
-python -m etl.harmonize_smart
+python -m app.migrate
+python -m app.load
+python -m app.reconcile
 ```
 
 Then delete the steps from your spec and write one line:
@@ -490,17 +492,19 @@ follow them by hand. Delete them.
 
 ### Why this comes up
 
-From a real incident: an agent was told to run a six-step database
-procedure documented in a spec. It hand-wrote a temp script from memory
-instead, dropped a step, hit a foreign-key violation. Twice in one hour.
-Its own summary: *"improvising the sequence rather than executing the spec."*
+The pattern is always the same. An agent is told to follow an ordered
+procedure that is documented correctly. It reconstructs the sequence from
+memory instead of executing it, drops a step, and the step it drops is the
+one that was protecting something.
 
-It called that a discipline problem. It's a design problem:
+The tell is when the postmortem says *"I improvised the sequence rather than
+executing the spec."* That sounds like a discipline problem. It's a design
+problem:
 
 > **A sequence that must be followed exactly should not exist as prose.**
 
-If the only thing between you and a corrupted table is someone retyping six
-steps in order, that fails eventually.
+If the only thing between you and an unrecoverable state is someone retyping
+several steps in the right order, that fails eventually.
 
 ### But doesn't this stifle ideation?
 

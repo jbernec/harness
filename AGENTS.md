@@ -20,17 +20,16 @@ Applies to GitHub Copilot, Claude Code, Codex, and anything else.
 
 5. **Never hand-write a sequence that already has a runner.**
    Before writing any script for a multi-step procedure, **check whether a
-   runner already exists** — `grep -rn "STAGE_ORDER\|def main" .` and read
-   the entry point. Building a second runner creates the drift you were
-   removing.
+   runner already exists** — search for entry points and read them. Building
+   a second runner creates the drift you were removing.
 
    If a procedure exists as a script, a make target, or a documented ordered
    list, invoke it. Do not retype it, do not write a "temp script" that does
    the same thing, do not do the steps individually because it seemed faster.
 
-   This is where real damage happens. A dropped step in a six-step database
-   procedure is not a typo, it's a corrupted table. If the runner is wrong,
-   say so and stop — do not route around it.
+   This is where real damage happens. A dropped step in an ordered procedure
+   is not a typo, it's an unrecoverable state. If the runner is wrong, say so
+   and stop — do not route around it.
 
    Read-only probes are fine. Investigating with a throwaway `SELECT` script
    is reversible and costs nothing. Delete it when you're done.

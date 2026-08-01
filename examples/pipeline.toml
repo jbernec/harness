@@ -1,37 +1,34 @@
-# ETL pipeline - ordered steps with irreversible side effects.
+# Data pipeline - ordered steps with irreversible side effects.
 #
-# Read this first:
-# This config exists because of a real incident. An agent was told to run a
-# six-step procedure documented in the spec. It hand-wrote a "temp script"
-# from memory instead, dropped a step, and hit a foreign-key violation.
-# Twice in one hour, same root cause. Its own summary: "improvising the
-# sequence rather than executing the spec."
+# Use this shape for anything where steps must run in a fixed order and the
+# side effects cannot be undone: ETL loads, migrations, batch jobs, index
+# rebuilds, bulk imports.
 #
-# The lesson is not "be more careful". It is:
+# The governing rule:
 #
 #   A sequence that must be followed exactly should not exist as prose.
 #
-# If the only thing standing between you and a corrupted table is someone
-# retyping six steps in the right order, that will fail eventually. Ship a
-# runner, make the spec point at it, and there is nothing left to retype.
+# If a procedure is written out as numbered steps in a document, someone
+# eventually retypes it and drops one. Put the steps in a runner, point the
+# document at the runner, and delete the numbered list.
 
 project = "pipeline"
 spec = "spec.md"
 
-# The runner and the migrations are not the agent's to rewrite. The incident
-# above WAS a hand-written temp script shadowing the real one.
+# The runner and the migrations are not the agent's to rewrite. Hand-written
+# scripts that shadow the real runner are the thing this prevents.
 protected = ["tests/", "pipeline/", "migrations/", "spec.md"]
 
 
 # --- preflight: cheap, fails in seconds, runs before anything expensive ---
-# Both misses in the incident would have been caught here, instantly, before
-# the harmoniser started its 45-minute run.
+# Two seconds here beats a forty-minute run that rolls back. Assert the world
+# is what you expect before touching it.
 
 [[check]]
 name = "preconditions"
-cmd = "python -m etl.preflight"
+cmd = "python -m app.preflight"
 expect = 0
-description = "coords backfilled and orphan alerts cleared before any write"
+description = "required inputs present and consistent before any write"
 timeout = 120
 
 
@@ -41,13 +38,13 @@ timeout = 120
 name = "runner_is_the_only_path"
 cmd = "python scripts/assert_no_adhoc_scripts.py"
 expect = 0
-description = "no untracked temp script that WRITES - read-only probes are fine"
+description = "no untracked scratch script that WRITES - read-only probes are fine"
 
 [[check]]
 name = "steps_match_spec"
 cmd = "python scripts/assert_runner_matches_spec.py"
 expect = 0
-description = "pipeline/run.sh executes exactly the steps spec R-101 lists, in order"
+description = "the runner executes exactly the steps the spec lists, in order"
 
 [[check]]
 name = "runner_stops_on_failure"
@@ -56,16 +53,16 @@ expect = 0
 description = "a failing step halts the chain instead of continuing into a bad state"
 
 [[check]]
-name = "no_orphan_entrypoints"
-cmd = "python -m pytest tests/test_reachability.py -q"
+name = "runner_can_resume"
+cmd = "python -m pytest tests/test_resume.py -q"
 expect = 0
-description = "every harmonize_* is reachable from the runner, not only from someone's temp script"
+description = "the runner resumes mid-sequence - otherwise corrective runs get hand-written"
 
 [[check]]
-name = "guard_works_both_ways"
-cmd = "python -m pytest tests/test_guard_behaviour.py -q"
+name = "no_orphan_steps"
+cmd = "python -m pytest tests/test_reachability.py -q"
 expect = 0
-description = "the adhoc guard blocks a write script AND allows a read-only probe"
+description = "every step module is reachable from the runner, not only from a scratch script"
 
 
 # --- irreversibility: the property that decides everything here ---
@@ -74,11 +71,11 @@ description = "the adhoc guard blocks a write script AND allows a read-only prob
 name = "single_transaction"
 cmd = "python -m pytest tests/test_transaction.py -q"
 expect = 0
-description = "the harmoniser commits once or not at all - this is what saved the data"
+description = "the load commits once or not at all"
 
 [[check]]
 name = "dry_run_default"
-cmd = "python -m etl.harmonize --assert-dry-run-default"
+cmd = "python -m app.load --assert-dry-run-default"
 expect = 0
 description = "writing to production requires an explicit flag, never a default"
 
@@ -86,16 +83,27 @@ description = "writing to production requires an explicit flag, never a default"
 name = "idempotent_rerun"
 cmd = "python -m pytest tests/test_idempotent.py -q"
 expect = 0
-description = "running the pipeline twice produces the same row counts as running it once"
+description = "running twice produces the same result as running once"
 
 [[check]]
-name = "row_counts_reconcile"
-cmd = "python -m etl.reconcile --expect-observations 7004676"
+name = "counts_reconcile"
+cmd = "python -m app.reconcile"
 expect = 0
-description = "the number of observations after the run is the number we expect"
+description = "row counts after the run match what the run claims it did"
+
+
+# --- guards must be proven in both directions ---
+# A guard that only ever passes is decoration. One that blocks normal work
+# gets bypassed, and a bypassed guard catches nothing.
+
+[[check]]
+name = "guard_works_both_ways"
+cmd = "python -m pytest tests/test_guard_behaviour.py -q"
+expect = 0
+description = "the adhoc guard blocks a write script AND allows a read-only probe"
 
 
 # --- NOT checkable ---
 # Whether this is the right transformation, whether the schema serves the
-# questions you want to ask, whether a column should exist at all. Those are
+# questions you want to ask, whether a field should exist at all. Those are
 # design calls. Improvise there freely - that is where the thinking happens.

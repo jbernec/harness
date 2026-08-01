@@ -12,13 +12,12 @@ set -euo pipefail   # -e stop on first failure  -u catch typos  -o pipefail
 
 # Cheap assertions first. Two seconds here beats forty minutes and a
 # rollback. Exit non-zero and -e halts everything below.
-python -m etl.preflight
+python -m app.preflight
 
-python -m etl.backfill_coords
-python -m etl.delete_alerts
-python -m etl.harmonize_smart
-python -m etl.harmonize_smart_compliance
-python -m etl.counts
-python -m etl.vacuum
+python -m app.migrate
+python -m app.stage
+python -m app.transform
+python -m app.load
+python -m app.reconcile
 
 echo "pipeline complete"
