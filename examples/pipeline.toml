@@ -41,7 +41,7 @@ timeout = 120
 name = "runner_is_the_only_path"
 cmd = "python scripts/assert_no_adhoc_scripts.py"
 expect = 0
-description = "no untracked *.sql or temp_*.py sitting in the working tree"
+description = "no untracked temp script that WRITES - read-only probes are fine"
 
 [[check]]
 name = "steps_match_spec"
@@ -54,6 +54,18 @@ name = "runner_stops_on_failure"
 cmd = "python -m pytest tests/test_runner.py -q"
 expect = 0
 description = "a failing step halts the chain instead of continuing into a bad state"
+
+[[check]]
+name = "no_orphan_entrypoints"
+cmd = "python -m pytest tests/test_reachability.py -q"
+expect = 0
+description = "every harmonize_* is reachable from the runner, not only from someone's temp script"
+
+[[check]]
+name = "guard_works_both_ways"
+cmd = "python -m pytest tests/test_guard_behaviour.py -q"
+expect = 0
+description = "the adhoc guard blocks a write script AND allows a read-only probe"
 
 
 # --- irreversibility: the property that decides everything here ---

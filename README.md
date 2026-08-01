@@ -68,6 +68,9 @@ harness spec sync       # goes RED the moment the spec text changes
 only what your problem needs — adopting all three at once is how this ends
 up unused.
 
+Already writing checks? [How checks fail](#how-checks-fail) covers the four
+ways they quietly stop working.
+
 ---
 
 ## The problem
@@ -230,6 +233,98 @@ because running a check creates them itself. Override with `guard_ignore`.
 
 Outside a git repo the guard **fails closed** — it cannot verify, so it
 refuses rather than waving work through.
+
+---
+
+## How checks fail
+
+Red-first catches the check that could never fail. These are the other four,
+all learned the expensive way.
+
+### 1. The check that copies what it guards
+
+You write a check to catch a constant being duplicated in two places. You
+hardcode the constant in the check. The check now finds **three** copies —
+including itself:
+
+```
+assert 2 == 1
+hits: ['db/backfills/coords.sql', 'tests/test_drift.py']
+```
+
+A duplication check must **derive** its needle from the source, never repeat
+it:
+
+```python
+# wrong - the test is now a third copy
+NEEDLE = "329850"
+
+# right - one source of truth, the test reads it
+NEEDLE = re.search(r"utm_easting\s*=\s*(\d+)", SQL.read_text()).group(1)
+```
+
+Same rule as `bless`: never type a value the tool can compute.
+
+### 2. The guard that cries wolf
+
+A guard that flags legitimate work gets bypassed, and a bypassed guard
+catches nothing. It is worse than no guard, because you think you're covered.
+
+Scope guards by **what actually caused harm**, not by what looks suspicious:
+
+```
+too broad   any untracked tmp_*.py            <- blocks read-only probes
+right       untracked tmp_*.py that WRITES    <- catches only the real thing
+```
+
+Read-only exploration is the reversible side of the line. Improvising there
+is correct and must stay cheap.
+
+### 3. The guard nobody proved
+
+Every guard needs testing **in both directions**, or you don't know which
+kind you built:
+
+```bash
+# must FAIL
+printf 'cur.execute("DELETE FROM alerts")' > tmp_x.py
+python scripts/guard.py; echo "expect 1, got $?"
+
+# must PASS
+printf 'conn.set_session(readonly=True)' > tmp_y.py
+python scripts/guard.py; echo "expect 0, got $?"
+```
+
+Only the first passing means it's decoration. Only the second passing means
+it's an obstacle. You need both.
+
+### 4. The code nothing can reach
+
+A function that exists only in someone's temp script is invisible: no
+caller, no test, no runner path. It won't show up as broken because nothing
+runs it.
+
+Check reachability from the real entry point:
+
+```toml
+[[check]]
+name = "no_orphan_entrypoints"
+cmd = "python -m pytest tests/test_reachability.py -q"
+description = "every harmonize_* is reachable from STAGE_ORDER"
+```
+
+Make it a test, not a script. An unreachable module should fail CI, not wait
+for someone to remember a linter exists.
+
+### And before you write any of it
+
+**Check whether the thing already exists.** A runner you didn't know about
+is worse than no runner — build a second one and you've created the drift
+you were removing.
+
+```bash
+grep -rn "STAGE_ORDER\|def main\|^run:" --include=*.py --include=Makefile .
+```
 
 ---
 

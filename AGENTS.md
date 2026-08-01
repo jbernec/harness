@@ -19,6 +19,11 @@ Applies to GitHub Copilot, Claude Code, Codex, and anything else.
    `harness gate` decides. Report what you changed; stop there.
 
 5. **Never hand-write a sequence that already has a runner.**
+   Before writing any script for a multi-step procedure, **check whether a
+   runner already exists** — `grep -rn "STAGE_ORDER\|def main" .` and read
+   the entry point. Building a second runner creates the drift you were
+   removing.
+
    If a procedure exists as a script, a make target, or a documented ordered
    list, invoke it. Do not retype it, do not write a "temp script" that does
    the same thing, do not do the steps individually because it seemed faster.
@@ -26,6 +31,9 @@ Applies to GitHub Copilot, Claude Code, Codex, and anything else.
    This is where real damage happens. A dropped step in a six-step database
    procedure is not a typo, it's a corrupted table. If the runner is wrong,
    say so and stop — do not route around it.
+
+   Read-only probes are fine. Investigating with a throwaway `SELECT` script
+   is reversible and costs nothing. Delete it when you're done.
 
 6. **Irreversible actions are on rails.**
    Writing to production, submitting orders, moving money, deploying, sending
@@ -36,6 +44,16 @@ Applies to GitHub Copilot, Claude Code, Codex, and anything else.
    `test_escrow.py` pass because the escrow model has no partial-refund
    state" is a genuinely useful answer. A green you engineered by gutting the
    assertion is worse than no answer at all.
+
+8. **If you write a check, do not hardcode what it guards.**
+   A duplication check that repeats the constant becomes another copy of it.
+   Derive the value from the source file. Never type a value the tool can
+   compute.
+
+9. **If you write a guard, prove it both ways.**
+   Show it failing on the thing it must catch, and passing on legitimate
+   work. A guard that only ever passes is decoration; one that blocks normal
+   work gets bypassed. Report both exit codes.
 
 ## The loop you are part of
 
