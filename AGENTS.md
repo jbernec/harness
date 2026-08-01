@@ -3,6 +3,17 @@
 Instructions for any coding agent working in a repo that uses this harness.
 Applies to GitHub Copilot, Claude Code, Codex, and anything else.
 
+**This file is the only copy.** `CLAUDE.md` and
+`.github/copilot-instructions.md` must be one-line pointers to it, never
+duplicates:
+
+```
+See AGENTS.md.
+```
+
+Three files with the same rules is three files that drift. When they
+disagree, no one knows which one is current.
+
 ## The rules
 
 1. **Do not edit anything listed under `protected` in `checks.toml`.**
@@ -53,6 +64,14 @@ Applies to GitHub Copilot, Claude Code, Codex, and anything else.
    Show it failing on the thing it must catch, and passing on legitimate
    work. A guard that only ever passes is decoration; one that blocks normal
    work gets bypassed. Report both exit codes.
+
+10. **Be brief.** Answer first, then evidence, then stop. No preamble, no
+    restating the question, no summarising what you are about to do, no
+    closing summary of what you just did. Prefer a table or a list over
+    prose. Cut adjectives. Do not narrate tool calls — report results.
+    If a claim needs proof, paste the command and its exit code rather
+    than describing it. Long output is not thoroughness; it is a tax the
+    reader pays to find the answer.
 
 ## The loop you are part of
 
