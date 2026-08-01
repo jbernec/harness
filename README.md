@@ -1,132 +1,53 @@
 # harness
 
-A small, reusable way to prove an AI coding agent actually did the work.
+Prove an AI coding agent actually did the work, instead of taking its word.
 
 Zero dependencies. Python 3.11+. Drop it onto any project.
 
----
-
-## Start here
-
-Three separate failure modes. Find yours, do the fix, ignore the rest of
-this file until you hit another one.
-
-### 1. The agent says "done" and it isn't
-
-Fix: **red first + gate.**
-
 ```bash
-harness init
-harness red mycheck     # it must FAIL before the work starts
-# agent works
-harness gate mycheck    # decides. not the agent.
+harness red mycheck     # 1. it must FAIL before the work starts
+#   ... agent works ...
+harness gate mycheck    # 2. the harness decides. not the agent.
 ```
 
-→ [Use](#use)
-
-### 2. The agent dropped a step in a procedure
-
-Fix: **a runner.** Put the commands in a file. Point the spec at the file.
-
-```bash
-# pipeline/run.sh
-set -euo pipefail
-python -m app.migrate
-python -m app.load
-python -m app.reconcile
-```
-
-```markdown
-### Deploy procedure
-Run `pipeline/run.sh`.
-```
-
-The steps became one command. Nothing gets retyped, so nothing gets dropped.
-**Delete the written-out steps** — if they stay, someone follows them by hand.
-
-→ [Improvisation vs runners](#improvisation-vs-runners)
-
-### 3. The spec says one thing, the code does another
-
-Fix: **numbered requirements + fingerprints.**
-
-```markdown
-### R-002  Position limit
-No position may exceed 20% of book value.
-check: position_limit
-```
-
-```bash
-harness spec bless      # "I've read these, they agree"
-harness spec sync       # goes RED the moment the spec text changes
-```
-
-→ [Spec drift](#spec-drift)
+The rule underneath all of it: **whoever does the work does not grade the
+work.** The cheapest way to satisfy a grader you control is to lower it.
 
 ---
 
-**These are independent.** Runners need no IDs. IDs need no runners. Take
-only what your problem needs — adopting all three at once is how this ends
-up unused.
+## Which problem do you have?
 
-Already writing checks? [How checks fail](#how-checks-fail) covers the four
-ways they quietly stop working.
+| Symptom | Fix | Read |
+|---|---|---|
+| Agent says "done" and it isn't | red first + gate | below |
+| Agent dropped a step in a procedure | a runner | [runners](docs/runners.md) |
+| Spec says one thing, code does another | numbered requirements | [requirements](docs/requirements.md) |
 
----
-
-## The problem
-
-You ask an agent to fix something. It says "Done! All tests pass." ✅
-
-You have no idea if that's true. The agent graded its own homework. It may have:
-
-- deleted the failing assertion instead of fixing the bug
-- written a test that never could have failed
-- simply reported success without running anything
-
-**The rule this repo enforces: the one who does the work does not get to grade the work.**
-
----
-
-## The four primitives
-
-A harness is not one thing. It is four small things assembled.
-
-| # | Primitive | What it is | Why it exists |
-|---|-----------|-----------|---------------|
-| 1 | **Check** | A command + the exit code that counts as passing | A fact, not an opinion |
-| 2 | **Red first** | Run the check *before* the fix. It must fail | A check never seen failing proves nothing |
-| 3 | **Trace** | An append-only, tamper-evident log of every result | Order is the evidence: red *then* green |
-| 4 | **Gate** | Reads the trace and decides | Must not be the agent |
-
-The four are the parts. **The harness is the assembly.**
-
-### Why "red first" is the load-bearing one
-
-`assert True` passes. So does a test for a feature you never wrote, if it's
-wired up wrong. A green check on its own means nothing.
-
-A check you *watched fail*, then watched pass, after a change you can point
-to — that means something. The trace is what preserves the "then".
+These are independent. Runners need no requirement IDs; IDs need no runners.
+**Take only what your problem needs.** Adopting all three at once is how this
+ends up unused.
 
 ---
 
 ## Install
 
 ```bash
-git clone <this-repo> && cd harness
-pip install -e .
+git clone https://github.com/jbernec/harness && cd harness && pip install -e .
 ```
 
-Then, in any project you want to verify:
+On an existing project:
 
 ```bash
-harness init
+cd your-project
+harness init          # writes checks.toml, spec.md, decisions.md, AGENTS.md
+                      # never overwrites anything
 ```
+
+---
 
 ## Use
 
-Create `checks.toml` in the project you want to verify:
+`checks.toml` — a check is a command plus the exit code that counts as passing:
 
 ```toml
 project = "aria"
@@ -142,14 +63,14 @@ description = "no single position may exceed 20% of the book"
 Then:
 
 ```bash
-harness list                    # what am I checking?
-harness red position_limit      # 1. prove it fails first
-#   ... now let the agent work ...
-harness run position_limit      # 2. did it turn green?
-harness gate position_limit     # 3. is it actually done?
+harness list                  # what am I checking?
+harness red position_limit    # 1. prove it fails first
+#   ... agent works ...
+harness run position_limit    # 2. did it turn green?
+harness gate position_limit   # 3. is it actually done?
 ```
 
-`harness gate` exits 0 only when **all four** conditions hold:
+`harness gate` exits 0 only when **all five** conditions hold:
 
 ```
 check              position_limit
@@ -162,567 +83,68 @@ check              position_limit
 PASS
 ```
 
-Any `no` is a refusal. There is no partial credit and no override flag.
+Any `no` is a refusal. No partial credit, no override flag.
 
-### Running a subset while you iterate
+### Iterating on a big suite
 
-A full suite you run once a day catches less than a fast one you run every
-few minutes. Scope a check to the paths it is about:
+Scope a check to the paths it is about, then shortlist:
 
 ```toml
-[[check]]
-name = "api_contract"
-cmd = "python -m pytest tests/test_api.py -q"
 files = ["src/api/", "schema/*.json"]
 ```
 
 ```bash
-harness select              # which checks concern what I have changed?
-harness select --base main  # ...on this branch
+harness select                # which checks concern what I changed?
 ```
 
-Two rules make this safe:
-
-- **A check with no `files` always runs.** Forgetting to scope something
-  makes the net wider, never narrower. A check that was skipped and a check
-  that passed look identical afterwards.
-- **The gate never selects.** `harness gate` runs the full set. Otherwise
-  the cheapest way to pass is to touch nothing the suite is watching.
-
-If git can't answer — no repo, unknown ref — selection runs everything and
-says so.
+A check with no `files` always runs, and **the gate never selects** —
+otherwise the easy way to pass is to touch nothing the suite watches.
 
 ---
 
 ## Handing work to an agent
 
-Paste this. Do not paste anything softer.
+Copy [`AGENTS.md`](AGENTS.md) into your project. It gives the agent its
+twelve rules. Point `CLAUDE.md` and `.github/copilot-instructions.md` at it
+with one line each — never duplicate the rules, or they drift.
+
+Then the task itself:
 
 ```
-`python -m pytest tests/test_limit.py -q` currently fails.
+`<command>` currently fails.
 Make it pass.
 
 Do not edit anything under tests/.
 Do not change the command.
-When you are done, say only which files you changed.
+When you are done, list only the files you changed.
 ```
 
-Note what is *not* there: no "let me know if it works", no asking the agent
-whether it's finished. You run `harness gate`. It answers.
-
-**Anti-pattern:** do not ask the agent to write its own harness. You write
-the checks. The agent writes the app. The moment those merge, you are back
-to self-reported success.
-
----
-
-## Trace integrity
-
-The trace is an HMAC-SHA256 hash chain. Each row commits to the one before it,
-so a row cannot be edited, reordered, or deleted without breaking every link
-after it.
-
-The important part is **where the key lives**:
-
-```
-~/.harness/key                      <- 32 random bytes, chmod 600
-~/.harness/<project>/trace.jsonl    <- the log
-```
-
-Both sit **outside the project directory**. The agent can write to your repo;
-it cannot write to these.
-
-This is deliberate. An *unkeyed* SHA-256 chain stored inside the workspace —
-the common design — is not tamper-evident at all: anyone who can write the
-file can just recompute every hash and produce a perfectly valid chain saying
-whatever they like. I verified this attack works against a shipped
-implementation before writing this one. With a key the agent has never seen,
-the same attack fails at row 0.
-
-Verify at any time:
-
-```bash
-harness verify
-harness log --json
-```
-
-Losing `~/.harness/key` invalidates existing traces. That is the intended
-trade-off: evidence is worth exactly as much as the key is protected.
-
----
-
-## The guard
-
-`protected = ["tests/"]` means: if anything under `tests/` changed since
-`HEAD`, the gate refuses — including **new untracked files**, so an agent
-cannot drop in `test_easy.py` and call it a win.
-
-Build artifacts (`__pycache__/`, `*.pyc`, `.pytest_cache/`) are ignored,
-because running a check creates them itself. Override with `guard_ignore`.
-
-Outside a git repo the guard **fails closed** — it cannot verify, so it
-refuses rather than waving work through.
-
----
-
-## How checks fail
-
-Red-first catches the check that could never fail. These are the other four,
-all learned the expensive way.
-
-### 1. The check that copies what it guards
-
-You write a check to catch a value being duplicated in two places. You
-hardcode that value in the check. The check now finds **three** copies —
-including itself:
-
-```
-assert 3 == 2
-found in: ['src/config.py', 'src/legacy.py', 'tests/test_no_duplicates.py']
-```
-
-A duplication check must **derive** its needle from the source, never repeat
-it:
-
-```python
-# wrong - the check is now another copy
-LIMIT = "0.20"
-
-# right - one source of truth, the check reads it
-LIMIT = re.search(r"MAX_POSITION\s*=\s*([\d.]+)", SOURCE.read_text()).group(1)
-```
-
-Same rule as `bless`: never type a value the tool can compute.
-
-### 2. The guard that cries wolf
-
-A guard that flags legitimate work gets bypassed, and a bypassed guard
-catches nothing. It is worse than no guard, because you think you're covered.
-
-Scope guards by **what actually caused harm**, not by what looks suspicious:
-
-```
-too broad   any scratch file in the tree      <- blocks exploration
-right       a scratch file that WRITES        <- catches only the real thing
-```
-
-Read-only exploration is the reversible side of the line. Improvising there
-is correct and must stay cheap.
-
-### 3. The guard nobody proved
-
-Every guard needs testing **in both directions**, or you don't know which
-kind you built:
-
-```bash
-# must FAIL - the thing it exists to catch
-<create the violation>
-python scripts/guard.py; echo "expect 1, got $?"
-
-# must PASS - normal, legitimate work
-<create something harmless>
-python scripts/guard.py; echo "expect 0, got $?"
-```
-
-Only the first passing means it's decoration. Only the second passing means
-it's an obstacle. You need both.
-
-### 4. The code nothing can reach
-
-A function that exists only in a scratch script is invisible: no caller, no
-test, no path from any entry point. It never shows up as broken because
-nothing runs it.
-
-Check reachability from the real entry point:
-
-```toml
-[[check]]
-name = "no_orphan_entrypoints"
-cmd = "python -m pytest tests/test_reachability.py -q"
-description = "every registered handler is reachable from the entry point"
-```
-
-Make it a test, not a script. An unreachable module should fail CI, not wait
-for someone to remember a linter exists.
-
-### And before you write any of it
-
-**Check whether the thing already exists.** A runner you didn't know about
-is worse than no runner — build a second one and you've created the drift
-you were removing.
-
-```bash
-grep -rn "def main\|^run:\|entry_points\|\"scripts\"" \
-  --include=*.py --include=Makefile --include=package.json --include=*.toml .
-```
-
----
-
-## Spec vs harness
-
-They are not the same thing and mixing them is how projects drift.
-
-| | Spec | Harness |
-|---|---|---|
-| Direction | Looking forward | Looking backward |
-| Says | "here is what we intend to build" | "here is proof of what was built" |
-| Lives | `docs/`, roadmap, objectives | `checks.toml` + trace |
-| Can lie | Easily, and silently | Only if you leak the key |
-
-Write the spec first. Derive checks from it. The harness proves the
-machinery works — it cannot tell you the machinery was worth building.
-That judgement stays with a human.
-
----
-
-## Spec drift
-
-A spec says what you intend. A check proves what you built. They come apart
-quietly unless something forces them together.
-
-Number every requirement in `spec.md`:
-
-```markdown
-### R-002  Position limit
-No single position may exceed 20% of book value.
-
-check: position_limit
-
-### R-007  The strategy is sound
-No command settles this.
-
-gate: human
-```
-
-Point the check back at it:
-
-```toml
-[[check]]
-name = "position_limit"
-requirement = "R-002"
-cmd = "python -m pytest tests/test_risk.py -q"
-```
-
-Then:
-
-```bash
-harness spec list        # what have I got, and how is each one settled?
-harness spec coverage    # is anything unaccounted for?
-harness spec bless       # I have read these; record their fingerprints
-harness spec sync        # has anything changed since I read it?
-harness spec history     # did anything change without saying why?
-```
-
-`bless` writes a fingerprint of each requirement's text into `checks.toml`.
-You never type it. Now change 20% to 25% in the spec:
-
-```
-FAIL  changed since last reviewed -> R-002: spec is a0c325, check recorded 7fe6cd
-```
-
-The gate will not open until you look at the check and either update it or
-re-bless it. **Drift stops being something you have to notice and becomes
-something that goes red.**
-
-### Re-blessing costs you a sentence
-
-Accepting a change requires a reason:
-
-```
-$ harness spec bless R-002
-FAIL  R-002 changed since it was last blessed (7fe6cd -> a0c325).
-      Re-blessing needs a reason: harness spec bless R-002 --reason "..."
-
-$ harness spec bless R-002 --reason "raised to 25% after the March review"
-blessed  R-002  a0c325  -> check position_limit  (amendment recorded)
-```
-
-Which writes into `spec.md`:
-
-```markdown
-### R-002  Position limit
-amended: 2026-08-01  raised to 25% after the March review
-No single position may exceed 25% of book value.
-
-status: implemented
-check: position_limit
-```
-
-The old wording is already in git. What git cannot tell you is **why**, and
-the moment you re-bless is the only moment you still remember. A month later
-the question is never "what did this used to say" — it's "who decided this
-and what did they know."
-
-`status:` is one of `draft`, `agreed`, `implemented`, `superseded`. Neither
-`status:` nor `amended:` is part of the fingerprint: recording that something
-changed must not itself count as a change, or blessing would re-drift what it
-just blessed.
-
-`harness spec history` fails when a requirement is marked `superseded` or
-`[REMOVED]` with no `amended:` line. A tombstone with no cause reads as an
-oversight, and someone eventually re-adds the rule you deliberately dropped.
-
-Add these to `checks.toml` and they run like any other check:
-
-```toml
-[[check]]
-name = "spec_coverage"
-cmd = "harness spec coverage"
-description = "every requirement has a check, or is marked gate: human"
-
-[[check]]
-name = "spec_sync"
-cmd = "harness spec sync"
-description = "no requirement changed without its check being reviewed"
-
-[[check]]
-name = "spec_history"
-cmd = "harness spec history"
-description = "nothing was superseded or removed without saying why"
-```
-
-### Three rules for IDs
-
-1. **Never change an ID.** Traces point at them.
-2. **Never reuse one.** `harness spec list` rejects duplicates.
-3. **Retire, don't delete** — mark `[REMOVED]`, leave it in place, and add an
-   `amended:` line saying what replaced it.
-
-### Every requirement ends one of two ways
-
-`check:` or `gate: human`. There is no third option, and that's the point.
-Marking something human-gated isn't an admission of failure — it's the spec
-being honest that no command can settle it. What must never happen is a
-requirement nobody has decided how to settle. That's what `spec coverage`
-catches.
-
----
-
-## Memory
-
-Agents forget. Sessions end. Models get swapped. Put durable memory in files,
-not in a model:
-
-```
-spec.md          what we're building, R-xxx numbered
-checks.toml      how we prove it
-decisions.md     why we chose X over Y, dated
-AGENTS.md        rules for agents
-~/.harness/      the trace: what actually happened
-```
-
-The three that hold history have **opposite rules**, and mixing them up is
-the common mistake:
-
-| File | You may | You may never |
-|---|---|---|
-| `spec.md` | edit it — it's the present | — |
-| `decisions.md` | append to the bottom | rewrite an old entry |
-| trace | nothing; the tool writes it | touch it |
-
-You can change the present. You cannot change the past. Superseding a
-decision means adding `D-021` and marking `D-008` as superseded — not
-editing D-008. The wrong turn is usually the most useful entry in the file;
-it's the reason you don't take it twice.
-
-**The test for whether your memory is in the right place:** a fresh session
-with zero context should be able to pick up the work by reading the repo. If
-it can't, the memory is in a chat log and it's already gone.
-
-`decisions.md` is the one people skip. Its trigger is human and it's one
-line: *you made a choice you'd have to explain in six months.* Three lines,
-then move on.
-
-Templates: [`spec.template.md`](spec.template.md),
-[`decisions.template.md`](decisions.template.md).
-
----
-
-## Improvisation vs runners
-
-### The fix, first
-
-If a procedure has steps that must run in order, put them in a file:
-
-```bash
-# pipeline/run.sh
-set -euo pipefail
-python -m app.migrate
-python -m app.load
-python -m app.reconcile
-```
-
-Then delete the steps from your spec and write one line:
-
-> Run `pipeline/run.sh`.
-
-Done. Nothing is retyped, so nothing can be dropped. `set -e` means a failed
-step stops the chain instead of continuing into a corrupted state.
-
-**Leaving the written-out steps in the spec defeats it** — someone will
-follow them by hand. Delete them.
-
-### Why this comes up
-
-The pattern is always the same. An agent is told to follow an ordered
-procedure that is documented correctly. It reconstructs the sequence from
-memory instead of executing it, drops a step, and the step it drops is the
-one that was protecting something.
-
-The tell is when the postmortem says *"I improvised the sequence rather than
-executing the spec."* That sounds like a discipline problem. It's a design
-problem:
-
-> **A sequence that must be followed exactly should not exist as prose.**
-
-If the only thing between you and an unrecoverable state is someone retyping
-several steps in the right order, that fails eventually.
-
-### But doesn't this stifle ideation?
-
-No, because these operate on different questions:
-
-- **Ideation** — *what should we do?* → keep free
-- **Improvisation** — *how do I execute something already known?* → remove
-
-You only remove the second, and only where a correct sequence already
-exists. Nobody has a creative breakthrough retyping a migration sequence.
-
-### The line: is the action reversible?
-
-| | Reversible | Irreversible |
-|---|---|---|
-| **Examples** | edit a file, run tests, prototype, draft a query | write to prod, submit an order, send money, deploy, email users |
-| **How** | improvise freely | runner only |
-| **Why** | mistake costs `git checkout` | mistake is permanent |
-
-An agent that can't experiment is useless. An agent that can improvise a
-payout script is dangerous. Same agent, different blast radius.
-
-### When to write one
-
-Don't design runners up front — you'd be guessing. Promote them:
-
-```
-1st time doing it   improvise, it's exploration
-2nd time, same way  it's a procedure now -> write the runner
-                    delete the prose version
-```
-
-Corollary, and the one that matters: **the same failure twice means a check
-is missing.** "Be more careful" is not a mechanism. First occurrence, fix
-and log it. Second occurrence, stop and write the check.
-
-### Per project
-
-| Project | Improvise | Runner only |
-|---|---|---|
-| ETL | query shapes, schema design, transformation logic | migrations, load sequence, backfills |
-| Trading | strategy ideas, indicators, backtests | order submission, position sizing, live release |
-| Content/AI | ranking heuristics, prompts, UI | index rebuilds, publishing |
-| Marketplace | matching logic, pricing models | payouts, refunds, SMS sends |
-
-Same shape: **thinking is free, side effects are on rails.**
-
-### Cheap preflight beats expensive rollback
-
-A precondition check that fails in two seconds is worth more than a
-transaction that rolls back after forty minutes. Both save your data; only
-one saves your afternoon.
-
-```toml
-[[check]]
-name = "preconditions"
-cmd = "python -m etl.preflight"
-description = "assert the world is as expected before doing anything expensive"
-```
-
-Keep the transaction too. It's the last line, not the first.
-
-See [`examples/pipeline.toml`](examples/pipeline.toml).
-
----
-
-## Retrofitting an existing project
-
-```bash
-cd ~/code/my-project
-harness init
-```
-
-Writes `checks.toml`, `spec.md`, `decisions.md`, `AGENTS.md`, detects your
-test command, and **never overwrites anything that already exists**.
-
-### The one thing you cannot recover
-
-Code that already works has no red to observe. That evidence is gone and no
-tool gets it back. Run `harness red unit` on a passing suite and you'll get:
-
-```
-FAIL  'unit' PASSED during the red step.
-      A check that already passes is not testing your fix.
-```
-
-That is correct, not a bug. **Red-first applies from your next change
-onward** — which is where it was going to matter anyway. Don't fake a red to
-make the tool happy; you'd only be lying to yourself in a durable format.
-
-### Order to do it in
-
-1. **`harness init`**, then fix the test command if it guessed wrong.
-2. **Write the objective** at the top of `spec.md`. One sentence, one number.
-3. **Add requirements from real failures, not from imagination.** Something
-   broke last month? That's `R-001`, and the check is a test that would have
-   caught it. Something broke twice? That's your first check, today.
-4. **`harness spec bless`** to record the fingerprints.
-5. **From here on, new work goes red first.**
-
-### What not to do
-
-Do not sit down and write forty requirements before touching code. You'll
-produce a document nobody maintains and drift starts on day two. Five
-requirements that came from real incidents beat forty invented ones.
-
-Start where it hurts. If nothing hurts yet, one check on the thing that
-would ruin your week if it broke silently.
+You run `red` and `gate`. The agent only occupies the middle.
 
 ---
 
 ## What this cannot do
 
-Be honest about the boundary. A check can verify:
+A check verifies that a command exits 0, that output is deterministic, that
+an invariant holds. It **cannot** tell you whether the idea is any good.
 
-- a command exits 0
-- output is deterministic across runs
-- an invariant holds on given inputs
+For that, mark the requirement `gate: human` and judge it yourself. Then use
+[`reviewer.md`](reviewer.md) — a prompt for a *separate* session to read a
+diff the gate has already passed. Checks prove the code does what the checks
+say; they cannot say the checks were the right ones.
 
-A check **cannot** verify:
+---
 
-- whether the strategy is *wise*
-- whether an interpretation is *sound*
-- whether users will *want* it
+## Docs
 
-For those, the gate is a person. Keep the two categories separate in your
-`checks.toml` and don't pretend the second is automated.
-
-### The reviewer
-
-The checks prove the code does what the checks say. They cannot tell you the
-checks were the right ones, or that the change is three times bigger than the
-problem.
-
-[`reviewer.md`](reviewer.md) is a prompt for a **separate session** to read
-the diff after the gate has already passed. Same rule as everywhere else:
-whoever did the work does not get to grade it. Give it the diff and the spec,
-nothing else — the reasoning that explains why the author did something is
-exactly what stops a reviewer noticing they shouldn't have.
-
-It has no exit code and it isn't repeatable. Ask twice, get two answers. It
-belongs where judgement belongs and nowhere near the gate.
-
-One reviewer, deliberately generic. Splitting it into a security reviewer, a
-performance reviewer and a correctness reviewer sounds thorough and produces
-three shallow passes and three files that drift apart.
+| | |
+|---|---|
+| [Concepts](docs/concepts.md) | the four primitives, and why red-first is load-bearing |
+| [Requirements](docs/requirements.md) | numbered requirements, drift fingerprints, amendments |
+| [Runners](docs/runners.md) | when to improvise, when the steps must live in a file |
+| [How checks fail](docs/failures.md) | four ways a check quietly stops working |
+| [Retrofitting](docs/retrofit.md) | putting this on a project that already exists |
+| [Trace and guard](docs/security.md) | why the evidence cannot be forged |
 
 ---
 
@@ -732,30 +154,25 @@ three shallow passes and three files that drift apart.
 harness/
   check.py   Check = cmd + expected exit code. Timeout is a failure, never a hang.
   trace.py   HMAC-chained append-only log. Key lives outside the project.
-  gate.py    The four-condition decision.
+  gate.py    Four conditions on the trace. The guard adds the fifth.
   guard.py   Agent must not edit its own tests. Fails closed.
   spec.py    Numbered requirements, coverage, drift fingerprints, amendments.
   init.py    Retrofit starter files onto an existing repo. Never overwrites.
   cli.py     init | list | select | red | run | gate | guard | verify | log | spec
 tests/       89 self-tests, including replays of the forgery attacks
-examples/    starting checks.toml for real project shapes
+examples/    starting checks.toml for aria, selah, ifetch, and pipelines
 reviewer.md  prompt for a separate session to review a passing diff
-spec.template.md, decisions.template.md
 ```
 
 ## Design notes
 
 - **Zero runtime dependencies** — stdlib `tomllib`, so `checks.toml` needs no parser.
 - **Check identity is name + cmd.** Weaken the command and old red evidence stops
-  applying to it — you cannot inherit a red from a harder version of the check.
-- **An unparseable trace row counts as a break**, not as an absent row. Otherwise
-  a row could be destroyed without breaking any link.
-- **Timeouts are failures** (exit `-1`), enforced in-process. A hung check is a
-  failed check.
-- **Selection can only widen.** A check with no `files` runs always, and the
-  gate ignores selection entirely. A skipped check and a passing check leave
-  the same trace.
+  applying — you cannot inherit a red from a harder version of the check.
+- **An unparseable trace row counts as a break**, not an absent row. Otherwise a
+  row could be destroyed without breaking any link.
+- **Timeouts are failures** (exit `-1`). A hung check is a failed check.
+- **Selection can only widen.** Unscoped checks always run; the gate ignores
+  selection. A skipped check and a passing check leave the same trace.
 
 MIT.
-
-
