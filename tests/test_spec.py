@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from harness.check import load_config  # noqa: E402
-from harness.spec import bless, coverage, parse, sync  # noqa: E402
+from harness.spec import amend, bless, coverage, history, parse, sync  # noqa: E402
 
 SPEC = """\
 # ARIA
@@ -243,3 +243,111 @@ def test_bless_preserves_comments_and_formatting(tmp_path):
 def test_bless_reports_an_unknown_check(tmp_path):
     _, cfg_path, _ = _setup(tmp_path)
     assert bless(cfg_path, "nonexistent", "abc123") is False
+
+
+# --- status and amendments -------------------------------------------------
+
+AMENDED_SPEC = """\
+# ARIA
+
+### R-001  Position limit
+No single position may exceed 20% of book value.
+
+amended: 2026-08-01  raised from 10% after the March drawdown
+status: implemented
+check: position_limit
+
+### R-002  Old rule
+Replaced by R-001.
+
+amended: 2026-07-04  folded into R-001
+status: superseded
+gate: human
+"""
+
+
+def test_status_defaults_to_agreed_when_unstated(tmp_path):
+    reqs = parse(write_spec(tmp_path))
+    assert all(r.status == "agreed" for r in reqs)
+
+
+def test_status_is_read_and_lowercased(tmp_path):
+    reqs = parse(write_spec(tmp_path, AMENDED_SPEC.replace("implemented", "IMPLEMENTED")))
+    assert reqs[0].status == "implemented"
+
+
+def test_amendments_are_parsed_with_date_and_reason(tmp_path):
+    reqs = parse(write_spec(tmp_path, AMENDED_SPEC))
+    assert reqs[0].amendments[0].on == "2026-08-01"
+    assert "March drawdown" in reqs[0].amendments[0].reason
+
+
+def test_an_amendment_does_not_change_the_fingerprint(tmp_path):
+    """Recording that something changed must not itself register as a change.
+
+    Otherwise blessing a drifted requirement re-drifts it and you loop.
+    """
+    before = parse(write_spec(tmp_path, AMENDED_SPEC))[0].fingerprint
+    after = parse(
+        write_spec(
+            tmp_path,
+            AMENDED_SPEC.replace(
+                "amended: 2026-08-01  raised from 10% after the March drawdown",
+                "amended: 2026-08-01  raised from 10% after the March drawdown\n"
+                "amended: 2026-08-02  confirmed with the risk desk",
+            ),
+        )
+    )[0].fingerprint
+    assert before == after
+
+
+def test_status_does_not_change_the_fingerprint(tmp_path):
+    a = parse(write_spec(tmp_path, AMENDED_SPEC))[0].fingerprint
+    b = parse(write_spec(tmp_path, AMENDED_SPEC.replace("status: implemented", "status: draft")))[0].fingerprint
+    assert a == b
+
+
+def test_history_passes_when_every_change_is_explained(tmp_path):
+    assert history(parse(write_spec(tmp_path, AMENDED_SPEC)))["ok"]
+
+
+def test_history_rejects_an_unknown_status(tmp_path):
+    reqs = parse(write_spec(tmp_path, AMENDED_SPEC.replace("status: draft", "status: maybe")
+                            .replace("status: implemented", "status: shipped")))
+    result = history(reqs)
+    assert not result["ok"]
+    assert "R-001" in result["reason"]
+
+
+def test_history_rejects_superseded_with_no_reason(tmp_path):
+    reqs = parse(write_spec(tmp_path, AMENDED_SPEC.replace("amended: 2026-07-04  folded into R-001\n", "")))
+    result = history(reqs)
+    assert not result["ok"]
+    assert "R-002" in result["unexplained"]
+
+
+def test_history_rejects_a_removal_with_no_reason(tmp_path):
+    """A tombstone with no cause invites someone to re-add the rule."""
+    result = history(parse(write_spec(tmp_path)))
+    assert not result["ok"]
+    assert "R-004" in result["silent_removal"]
+
+
+def test_amend_writes_a_dated_line_under_the_requirement(tmp_path):
+    p = write_spec(tmp_path)
+    assert amend(p, "R-002", "limit raised to 20%", on="2026-08-01")
+    reqs = parse(p)
+    by_id = {r.id: r for r in reqs}
+    assert str(by_id["R-002"].amendments[0]) == "2026-08-01  limit raised to 20%"
+    assert by_id["R-001"].amendments == ()
+
+
+def test_amend_returns_false_for_an_unknown_id(tmp_path):
+    assert not amend(write_spec(tmp_path), "R-999", "nope")
+
+
+def test_amend_leaves_every_other_requirement_untouched(tmp_path):
+    p = write_spec(tmp_path)
+    before = {r.id: r.fingerprint for r in parse(p)}
+    amend(p, "R-002", "limit raised to 20%")
+    assert {r.id: r.fingerprint for r in parse(p)} == before

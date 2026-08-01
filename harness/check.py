@@ -6,9 +6,10 @@ command, not an opinion, and nobody's judgement is involved.
 
 from __future__ import annotations
 
+import fnmatch
 import subprocess
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_TIMEOUT = 900
@@ -36,6 +37,70 @@ class Check:
     timeout: int = DEFAULT_TIMEOUT
     requirement: str = ""
     requirement_hash: str = ""
+    # Paths this check is about. Empty means "everything" - it always runs.
+    files: tuple[str, ...] = field(default_factory=tuple)
+
+    def concerns(self, paths: list[str]) -> bool:
+        """Does this check care about any of these changed files?
+
+        A check with no `files` always concerns you. That default is
+        deliberate: forgetting to declare paths must widen the net, never
+        narrow it. A scoping mistake that skips a check is invisible.
+        """
+        if not self.files:
+            return True
+        return any(_matches(p, f) for p in self.files for f in paths)
+
+
+def _matches(pattern: str, path: str) -> bool:
+    """Match a changed file against a check's path pattern.
+
+    `*` spans directories here, unlike shell globbing, so `src/*` and `src/**`
+    both cover `src/a/b.py`. A pattern ending in `/` is a directory prefix.
+    """
+    path = path.replace("\\", "/").lstrip("./")
+    pattern = pattern.replace("\\", "/").lstrip("./")
+    if pattern.endswith("/"):
+        return path.startswith(pattern)
+    return fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(path, pattern.rstrip("/") + "/*")
+
+
+def changed_files(cwd: Path, base: str | None = None) -> list[str] | None:
+    """Files that differ from `base`, plus anything uncommitted or untracked.
+
+    Returns None when git can't answer - no repo, bad ref, git missing. The
+    caller must treat that as "run everything", because a selector that fails
+    open is a nuisance and one that fails closed is a hole.
+    """
+    cmds = [["git", "status", "--porcelain"]]
+    if base:
+        cmds.insert(0, ["git", "diff", "--name-only", f"{base}...HEAD"])
+
+    found: list[str] = []
+    for cmd in cmds:
+        try:
+            proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if proc.returncode != 0:
+            return None
+        for line in proc.stdout.splitlines():
+            line = line.rstrip()
+            if not line:
+                continue
+            # `git status --porcelain` prefixes two status columns.
+            if cmd[1] == "status":
+                line = line[3:]
+                # Renames appear as `old -> new`; the new path is what changed.
+                if " -> " in line:
+                    line = line.split(" -> ", 1)[1]
+            found.append(line.strip().strip('"'))
+    return sorted(set(found))
+
+
+def select(checks: dict[str, Check], paths: list[str]) -> list[Check]:
+    """The checks that concern a set of changed files, in config order."""
+    return [c for c in checks.values() if c.concerns(paths)]
 
 
 @dataclass(frozen=True)
@@ -81,6 +146,7 @@ def load_config(path: Path) -> Config:
             timeout=int(entry.get("timeout", DEFAULT_TIMEOUT)),
             requirement=entry.get("requirement", ""),
             requirement_hash=entry.get("requirement_hash", ""),
+            files=tuple(entry.get("files", [])),
         )
     if not checks:
         raise ValueError("config defines no checks")

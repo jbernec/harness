@@ -44,6 +44,12 @@ name = "spec_sync"
 cmd = "harness spec sync"
 expect = 0
 description = "no requirement changed without its check being reviewed"
+
+[[check]]
+name = "spec_history"
+cmd = "harness spec history"
+expect = 0
+description = "nothing was superseded or removed without saying why"
 '''
 
 SPEC = '''\
@@ -61,6 +67,11 @@ Rules:
   - ids never change and are never reused
   - every requirement ends in `check:` or `gate: human` - no third option
   - retiring one means marking it `[REMOVED]`, not deleting it
+  - changing or retiring a settled one needs an `amended:` line saying why
+
+Optional per requirement:
+  status: draft | agreed | implemented | superseded   (default: agreed)
+  amended: 2026-01-31  what changed and why
 
 Retrofitting? Do not sit down and write forty of these. Add a requirement
 the next time something breaks, and write its check at the same time. A spec

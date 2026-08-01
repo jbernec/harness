@@ -2,12 +2,24 @@
 
 Copy this to your project root. Delete this header block.
 
-**Rules, all four of them:**
+**Rules, all five of them:**
 
 1. Every requirement gets an ID. `R-014`, or `R-RISK-014` once you split by area.
 2. **IDs never change and are never reused.** Old traces point at them.
 3. Every requirement ends in either `check:` or `gate: human`. No third option.
 4. Retiring a requirement means marking it `[REMOVED]`, not deleting it.
+5. Changing or retiring a settled requirement needs an `amended:` line saying
+   why. The old wording is in git; the reason is not.
+
+Optional per requirement:
+
+```
+status: draft | agreed | implemented | superseded    (default: agreed)
+amended: 2026-08-01  raised from 10% after the March drawdown
+```
+
+`status:` and `amended:` are not part of the fingerprint - recording that
+something changed must not itself count as a change.
 
 Write whatever prose you like around the requirements. Only the `### R-xxx`
 headings are parsed; everything else is context for humans.
@@ -19,6 +31,7 @@ harness spec list        # what have I got?
 harness spec coverage    # is anything unaccounted for?
 harness spec bless       # I have reviewed these; record the fingerprints
 harness spec sync        # has anything changed since I reviewed it?
+harness spec history     # did anything change without saying why?
 ```
 
 ---
@@ -45,6 +58,8 @@ check: no_trades_outside_universe
 No single position may exceed 20% of book value at the moment of order
 submission.
 
+amended: 2026-03-02  raised from 10% - see decisions.md D-014
+status: implemented
 check: position_limit
 
 ### R-003  Drawdown kill switch
@@ -84,8 +99,8 @@ would be the most expensive kind of lie the harness could tell.
 gate: human
 
 ### R-008  Position sizing by fixed fractional rule  [REMOVED]
-Replaced by volatility-targeted sizing. Kept so older traces referencing
-R-008 still resolve. See decisions.md D-014.
+amended: 2026-03-02  replaced by volatility-targeted sizing, see decisions.md D-014
+Kept so older traces referencing R-008 still resolve.
 
 ## Notes on the human gates
 

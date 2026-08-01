@@ -7,6 +7,7 @@ silently unless something forces them together. That something is here:
   - every requirement is either settled by a check, or gated by a human
   - a requirement's text has a fingerprint; edit the text and the fingerprint
     changes, which breaks the link and turns the check red
+  - changing a settled requirement leaves a dated record of why
 
 You never type a fingerprint. The tool computes it. `harness spec bless`
 writes it down, and that is the deliberate act of saying "yes, I looked."
@@ -15,18 +16,37 @@ writes it down, and that is the deliberate act of saying "yes, I looked."
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
 from hashlib import sha256
 from pathlib import Path
 
 # ### R-014  Position limit
 HEADING = re.compile(r"^#{1,6}\s+(R-[A-Z0-9]+(?:-[A-Z0-9]+)*)\s*(.*)$")
 
-# check: position_limit   |   gate: human
-DIRECTIVE = re.compile(r"^\s*(check|gate)\s*:\s*(.+?)\s*$", re.IGNORECASE)
+# check: position_limit   |   gate: human   |   status: agreed
+DIRECTIVE = re.compile(r"^\s*(check|gate|status)\s*:\s*(.+?)\s*$", re.IGNORECASE)
+
+# amended: 2026-08-01  limit raised from 10% to 20% after the March drawdown
+AMENDED = re.compile(r"^\s*amended\s*:\s*(\d{4}-\d{2}-\d{2})\s+(.+?)\s*$", re.IGNORECASE)
 
 REMOVED = "[REMOVED]"
 HASH_LEN = 6
+
+# Where a requirement is in its life. `draft` is not yet binding; `agreed` is
+# binding but unbuilt; `implemented` is built and checked; `superseded` has
+# been replaced and must say by what.
+STATUSES = ("draft", "agreed", "implemented", "superseded")
+DEFAULT_STATUS = "agreed"
+
+
+@dataclass(frozen=True)
+class Amendment:
+    on: str
+    reason: str
+
+    def __str__(self) -> str:
+        return f"{self.on}  {self.reason}"
 
 
 @dataclass(frozen=True)
@@ -38,13 +58,17 @@ class Requirement:
     gate: str | None
     removed: bool
     line: int
+    status: str = DEFAULT_STATUS
+    amendments: tuple[Amendment, ...] = field(default_factory=tuple)
 
     @property
     def fingerprint(self) -> str:
         """Hash of the requirement's meaning, not its formatting.
 
         Whitespace is normalised so re-wrapping a paragraph doesn't cry wolf,
-        but any change to the actual words does.
+        but any change to the actual words does. Directives - check, gate,
+        status, amended - are excluded: recording that you reviewed a change
+        must not itself count as a change.
         """
         text = f"{self.title}\n{self.body}"
         normalised = " ".join(text.split())
@@ -85,6 +109,8 @@ def parse(path: Path) -> list[Requirement]:
                 gate=current["gate"],
                 removed=current["removed"],
                 line=current["line"],
+                status=current["status"],
+                amendments=tuple(current["amendments"]),
             )
         )
 
@@ -101,16 +127,23 @@ def parse(path: Path) -> list[Requirement]:
                 "gate": None,
                 "removed": REMOVED in title,
                 "line": n,
+                "status": DEFAULT_STATUS,
+                "amendments": [],
             }
             continue
 
         if current is None:
             continue
 
+        amended = AMENDED.match(raw)
+        if amended:
+            current["amendments"].append(Amendment(on=amended.group(1), reason=amended.group(2)))
+            continue
+
         directive = DIRECTIVE.match(raw)
         if directive:
             kind, value = directive.group(1).lower(), directive.group(2).strip()
-            current[kind] = value
+            current[kind] = value.lower() if kind == "status" else value
             continue
 
         current["body"].append(raw)
@@ -195,6 +228,64 @@ def sync(reqs: list[Requirement], checks: dict) -> dict:
             else f"all {len(by_req)} linked requirements match their checks"
         ),
     }
+
+
+def history(reqs: list[Requirement]) -> dict:
+    """Rules about a requirement's life, not its content.
+
+    Deleting the old wording and typing new wording loses the one thing worth
+    keeping: that it changed, when, and why. These rules make that record
+    mandatory where it matters and cheap everywhere else.
+    """
+    bad_status = [
+        f"{r.id}: status '{r.status}' (use {', '.join(STATUSES)})"
+        for r in reqs
+        if r.status not in STATUSES
+    ]
+    # Superseded means something replaced it. Say what, or it reads as deleted.
+    unexplained = [
+        r.id for r in reqs if r.status == "superseded" and not r.amendments
+    ]
+    # Same for removal: a tombstone with no cause invites someone to re-add it.
+    silent_removal = [r.id for r in reqs if r.removed and not r.amendments]
+
+    problems = []
+    if bad_status:
+        problems.append("unknown status: " + "; ".join(bad_status))
+    if unexplained:
+        problems.append(
+            "superseded with no `amended:` line: " + ", ".join(unexplained)
+        )
+    if silent_removal:
+        problems.append("removed with no `amended:` line: " + ", ".join(silent_removal))
+
+    return {
+        "ok": not problems,
+        "bad_status": bad_status,
+        "unexplained": unexplained,
+        "silent_removal": silent_removal,
+        "amended": sum(len(r.amendments) for r in reqs),
+        "reason": "; ".join(problems) if problems else "every status is valid and every change is explained",
+    }
+
+
+def amend(spec_path: Path, req_id: str, reason: str, on: str | None = None) -> bool:
+    """Write a dated amendment line under a requirement.
+
+    Inserted directly beneath the heading, newest first, so the reason for the
+    current wording is the first thing read. Returns False if the ID isn't
+    found.
+    """
+    lines = spec_path.read_text(encoding="utf-8").splitlines()
+    stamp = on or date.today().isoformat()
+
+    for i, raw in enumerate(lines):
+        head = HEADING.match(raw)
+        if head and head.group(1) == req_id:
+            lines.insert(i + 1, f"amended: {stamp}  {reason}")
+            spec_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return True
+    return False
 
 
 def bless(config_path: Path, check_name: str, fingerprint: str) -> bool:

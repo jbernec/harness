@@ -73,6 +73,16 @@ disagree, no one knows which one is current.
     than describing it. Long output is not thoroughness; it is a tax the
     reader pays to find the answer.
 
+11. **Do not change a settled requirement silently.** If the spec must
+    change, `harness spec bless <ID> --reason "..."` — the reason is
+    written into `spec.md` as a dated `amended:` line. Git already has the
+    old wording; what it cannot tell anyone is why it stopped being right.
+
+12. **`harness select` is for iterating, not for finishing.** It shortlists
+    the checks that concern the files you changed. The gate runs the full
+    set. Never argue that a check "wasn't selected" — that is the same
+    sentence as "I did not run it."
+
 ## The loop you are part of
 
 ```

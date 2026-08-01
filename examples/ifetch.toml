@@ -14,12 +14,18 @@
 project = "ifetch"
 protected = ["tests/"]
 
+# `files` scopes a check to the paths it is about, so `harness select` can
+# shortlist it while you iterate. A check with no `files` always runs, and
+# the gate always runs everything - selection can only widen, never narrow.
+
+
 
 # --- money: the checks you cannot compromise on ---
 
 [[check]]
 name = "money_is_integer_minor_units"
 cmd = "python -m pytest tests/test_money.py -q"
+files = ["src/money/", "src/pricing/", "src/payments/"]
 expect = 0
 description = "no float ever touches a naira amount"
 
@@ -53,6 +59,7 @@ description = "a job created offline syncs exactly once when the network returns
 [[check]]
 name = "ng_phone_normalisation"
 cmd = "python -m pytest tests/test_phone.py -q"
+files = ["src/identity/", "src/phone/"]
 expect = 0
 description = "+2348031234567, 08031234567, 2348031234567 normalise to one value"
 
@@ -62,6 +69,7 @@ description = "+2348031234567, 08031234567, 2348031234567 normalise to one value
 [[check]]
 name = "matching_respects_radius"
 cmd = "python -m pytest tests/test_matching.py -q"
+files = ["src/matching/", "src/geo/"]
 expect = 0
 description = "no runner is matched outside their service radius"
 

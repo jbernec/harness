@@ -16,6 +16,11 @@ project = "aria"
 spec = "spec.md"
 protected = ["tests/", "data/holdout/", "spec.md"]
 
+# `files` scopes a check to the paths it is about, so `harness select` can
+# shortlist it while you iterate. A check with no `files` always runs, and
+# the gate always runs everything - selection can only widen, never narrow.
+
+
 
 # --- mechanical checks: things a command can settle ---
 
@@ -35,6 +40,7 @@ description = "no requirement changed without its check being reviewed"
 name = "position_limit"
 requirement = "R-002"
 cmd = "python -m pytest tests/test_risk.py -q"
+files = ["src/risk/", "src/sizing/"]
 expect = 0
 description = "no single position exceeds its cap, ever"
 
@@ -42,6 +48,7 @@ description = "no single position exceeds its cap, ever"
 name = "order_validity"
 requirement = "R-009"
 cmd = "python -m pytest tests/test_orders.py -q"
+files = ["src/orders/", "src/broker/"]
 expect = 0
 description = "every generated order is well-formed and within the universe"
 
@@ -49,6 +56,7 @@ description = "every generated order is well-formed and within the universe"
 name = "no_trades_outside_universe"
 requirement = "R-001"
 cmd = "python -m pytest tests/test_universe.py -q"
+files = ["src/universe/", "src/orders/", "config/universe.*"]
 expect = 0
 description = "the agent cannot buy something not on the approved list"
 

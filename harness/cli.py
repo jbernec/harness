@@ -2,6 +2,7 @@
 
     harness init                 write starter files into an existing repo
     harness list                 show every check
+    harness select               which checks concern the files you changed
     harness red <name>           run a check and require it to FAIL
     harness run <name>           run a check and record the result
     harness gate <name>          decide whether the work is done
@@ -11,6 +12,8 @@
     harness spec list            requirements and how each is settled
     harness spec coverage        fail if a requirement has no check and no gate
     harness spec sync            fail if a requirement changed after review
+    harness spec history         fail if a change was made with no reason given
+    harness spec amend <id>      record a dated reason for a change
     harness spec bless [id]      record that a check matches the spec as written
 """
 
@@ -21,7 +24,7 @@ import json
 import sys
 from pathlib import Path
 
-from .check import load_config, run
+from .check import changed_files, load_config, run, select
 from .gate import evaluate
 from .guard import check_protected
 from .init import init
@@ -92,6 +95,44 @@ def cmd_run(cfg, args, cwd, trace) -> int:
         state = "GREEN" if result.ok else "RED"
         print(f"{OK if result.ok else NO}  '{check.name}' is {state} (exit {result.exit_code}).")
     return 0 if result.ok else 1
+
+
+def cmd_select(cfg, args, cwd, trace) -> int:
+    """Which checks concern what you changed.
+
+    A shortlist for the edit-run loop, never for the gate. Any check that
+    would decide "done" runs in full, because the way to pass a selective
+    suite is to touch nothing it watches.
+    """
+    paths = changed_files(cwd, args.base)
+
+    if paths is None:
+        chosen, why = list(cfg.checks.values()), "git could not answer - running everything"
+    elif not paths:
+        chosen, why = [], "nothing changed"
+    else:
+        chosen = select(cfg.checks, paths)
+        why = f"{len(paths)} changed file(s)"
+
+    payload = {
+        "ok": True,
+        "reason": why,
+        "changed": paths or [],
+        "checks": [c.name for c in chosen],
+        "skipped": [c.name for c in cfg.checks.values() if c not in chosen],
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    print(f"{why}\n")
+    for c in chosen:
+        scope = ", ".join(c.files) if c.files else "unscoped - always runs"
+        print(f"  {c.name:<24} {scope}")
+    if payload["skipped"]:
+        print(f"\n  not concerned: {', '.join(payload['skipped'])}")
+    print("\nThis is a shortlist for iterating. Gate on the full set.")
+    return 0
 
 
 def cmd_gate(cfg, args, cwd, trace) -> int:
@@ -181,6 +222,8 @@ def cmd_spec(cfg, args, cwd, trace) -> int:
                     "settled_by": r.settled_by,
                     "check": r.check,
                     "gate": r.gate,
+                    "status": r.status,
+                    "amendments": [str(a) for a in r.amendments],
                     "fingerprint": r.fingerprint,
                 }
                 for r in reqs
@@ -190,8 +233,10 @@ def cmd_spec(cfg, args, cwd, trace) -> int:
         for r in reqs:
             how = {"check": f"check {r.check}", "human": f"gate {r.gate}",
                    "removed": "removed", "nothing": "NOTHING - unsettled"}[r.settled_by]
-            print(f"  {r.id:<14} {r.fingerprint}  {how}")
+            print(f"  {r.id:<14} {r.fingerprint}  {r.status:<12} {how}")
             print(f"  {'':<14} {r.title}")
+            for a in r.amendments:
+                print(f"  {'':<14} amended {a}")
         return 0
 
     if action == "coverage":
@@ -202,6 +247,22 @@ def cmd_spec(cfg, args, cwd, trace) -> int:
                   f"{result['by_check']} by check, {result['by_human']} by human gate")
             print(f"{OK if result['ok'] else NO}  {result['reason']}")
         return 0 if result["ok"] else 1
+
+    if action == "history":
+        result = spec.history(reqs)
+        _emit(result, args.json)
+        if not args.json:
+            print(f"{result['amended']} recorded amendment(s)")
+            print(f"{OK if result['ok'] else NO}  {result['reason']}")
+        return 0 if result["ok"] else 1
+
+    if action == "amend":
+        if not spec.amend(spec_path, args.id, args.reason, args.on):
+            print(f"no requirement '{args.id}' in {spec_path}", file=sys.stderr)
+            return 2
+        print(f"amended  {args.id}  {args.on or 'today'}  {args.reason}")
+        print("\nThe old wording is in git. This says why it is no longer the wording.")
+        return 0
 
     if action == "sync":
         result = spec.sync(reqs, cfg.checks)
@@ -220,10 +281,27 @@ def cmd_spec(cfg, args, cwd, trace) -> int:
                 return 2
 
         for r in targets:
-            if spec.bless(cfg_path, r.check, r.fingerprint):
-                print(f"blessed  {r.id:<14} {r.fingerprint}  -> check {r.check}")
-            else:
+            recorded = getattr(cfg.checks.get(r.check), "requirement_hash", "")
+            # Re-blessing after drift is the moment the change becomes
+            # official. That is the only moment you still remember why.
+            if recorded and recorded != r.fingerprint and not args.reason:
+                print(
+                    f"{NO}  {r.id} changed since it was last blessed "
+                    f"({recorded} -> {r.fingerprint}).\n"
+                    f"      Re-blessing needs a reason: "
+                    f"harness spec bless {r.id} --reason \"...\"",
+                    file=sys.stderr,
+                )
+                return 1
+
+            if not spec.bless(cfg_path, r.check, r.fingerprint):
                 print(f"skipped  {r.id:<14} check '{r.check}' not found in {args.config}", file=sys.stderr)
+                continue
+            note = ""
+            if args.reason and recorded and recorded != r.fingerprint:
+                spec.amend(spec_path, r.id, args.reason)
+                note = "  (amendment recorded)"
+            print(f"blessed  {r.id:<14} {r.fingerprint}  -> check {r.check}{note}")
         print("\nYou have stated that these checks match the spec as written.")
         return 0
 
@@ -262,6 +340,7 @@ fine. You get it from the next change onward, which is where it mattered.""")
 
 COMMANDS = {
     "list": cmd_list,
+    "select": cmd_select,
     "red": cmd_red,
     "run": cmd_run,
     "gate": cmd_gate,
@@ -280,6 +359,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list")
+    p_select = sub.add_parser("select")
+    p_select.add_argument("--base", help="git ref to diff against, e.g. main")
     for name in ("red", "run", "gate"):
         p = sub.add_parser(name)
         p.add_argument("name")
@@ -295,8 +376,14 @@ def main(argv: list[str] | None = None) -> int:
     spec_sub.add_parser("list")
     spec_sub.add_parser("coverage")
     spec_sub.add_parser("sync")
+    spec_sub.add_parser("history")
+    p_amend = spec_sub.add_parser("amend")
+    p_amend.add_argument("id", help="requirement id")
+    p_amend.add_argument("--reason", required=True, help="why it changed")
+    p_amend.add_argument("--on", help="date, defaults to today")
     p_bless = spec_sub.add_parser("bless")
     p_bless.add_argument("id", nargs="?", help="requirement id, or omit for all")
+    p_bless.add_argument("--reason", help="required when re-blessing a changed requirement")
 
     p_init = sub.add_parser("init")
     p_init.add_argument("--project", help="project name (defaults to the directory name)")

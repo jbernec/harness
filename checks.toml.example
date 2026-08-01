@@ -31,10 +31,30 @@ cmd = "harness spec sync"
 expect = 0
 description = "no requirement changed without its check being reviewed"
 
+[[check]]
+name = "spec_history"
+cmd = "harness spec history"
+expect = 0
+description = "nothing was superseded or removed without saying why"
+
 
 # ---------------------------------------------------------------------------
 # Patterns worth copying. Uncomment what applies.
 # ---------------------------------------------------------------------------
+
+# `files` scopes a check to the paths it is about, so `harness select` can
+# shortlist it during the edit-run loop. A check with no `files` always runs.
+# Leave it off unless the check is genuinely slow - a check you forgot to
+# scope is merely slow, and one you scoped wrongly is silently skipped.
+#
+# Selection is for iterating. The gate always runs the full set, because the
+# easy way to pass a selective suite is to touch nothing it watches.
+#
+# [[check]]
+# name = "api_contract"
+# cmd = "python -m pytest tests/test_api.py -q"
+# files = ["src/api/", "schema/*.json"]
+
 
 # A check can assert that something FAILS. That is what `expect` is for.
 #

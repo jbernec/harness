@@ -164,6 +164,34 @@ PASS
 
 Any `no` is a refusal. There is no partial credit and no override flag.
 
+### Running a subset while you iterate
+
+A full suite you run once a day catches less than a fast one you run every
+few minutes. Scope a check to the paths it is about:
+
+```toml
+[[check]]
+name = "api_contract"
+cmd = "python -m pytest tests/test_api.py -q"
+files = ["src/api/", "schema/*.json"]
+```
+
+```bash
+harness select              # which checks concern what I have changed?
+harness select --base main  # ...on this branch
+```
+
+Two rules make this safe:
+
+- **A check with no `files` always runs.** Forgetting to scope something
+  makes the net wider, never narrower. A check that was skipped and a check
+  that passed look identical afterwards.
+- **The gate never selects.** `harness gate` runs the full set. Otherwise
+  the cheapest way to pass is to touch nothing the suite is watching.
+
+If git can't answer — no repo, unknown ref — selection runs everything and
+says so.
+
 ---
 
 ## Handing work to an agent
@@ -382,6 +410,7 @@ harness spec list        # what have I got, and how is each one settled?
 harness spec coverage    # is anything unaccounted for?
 harness spec bless       # I have read these; record their fingerprints
 harness spec sync        # has anything changed since I read it?
+harness spec history     # did anything change without saying why?
 ```
 
 `bless` writes a fingerprint of each requirement's text into `checks.toml`.
@@ -395,7 +424,45 @@ The gate will not open until you look at the check and either update it or
 re-bless it. **Drift stops being something you have to notice and becomes
 something that goes red.**
 
-Add these two to `checks.toml` and they run like any other check:
+### Re-blessing costs you a sentence
+
+Accepting a change requires a reason:
+
+```
+$ harness spec bless R-002
+FAIL  R-002 changed since it was last blessed (7fe6cd -> a0c325).
+      Re-blessing needs a reason: harness spec bless R-002 --reason "..."
+
+$ harness spec bless R-002 --reason "raised to 25% after the March review"
+blessed  R-002  a0c325  -> check position_limit  (amendment recorded)
+```
+
+Which writes into `spec.md`:
+
+```markdown
+### R-002  Position limit
+amended: 2026-08-01  raised to 25% after the March review
+No single position may exceed 25% of book value.
+
+status: implemented
+check: position_limit
+```
+
+The old wording is already in git. What git cannot tell you is **why**, and
+the moment you re-bless is the only moment you still remember. A month later
+the question is never "what did this used to say" — it's "who decided this
+and what did they know."
+
+`status:` is one of `draft`, `agreed`, `implemented`, `superseded`. Neither
+`status:` nor `amended:` is part of the fingerprint: recording that something
+changed must not itself count as a change, or blessing would re-drift what it
+just blessed.
+
+`harness spec history` fails when a requirement is marked `superseded` or
+`[REMOVED]` with no `amended:` line. A tombstone with no cause reads as an
+oversight, and someone eventually re-adds the rule you deliberately dropped.
+
+Add these to `checks.toml` and they run like any other check:
 
 ```toml
 [[check]]
@@ -407,14 +474,19 @@ description = "every requirement has a check, or is marked gate: human"
 name = "spec_sync"
 cmd = "harness spec sync"
 description = "no requirement changed without its check being reviewed"
+
+[[check]]
+name = "spec_history"
+cmd = "harness spec history"
+description = "nothing was superseded or removed without saying why"
 ```
 
 ### Three rules for IDs
 
 1. **Never change an ID.** Traces point at them.
 2. **Never reuse one.** `harness spec list` rejects duplicates.
-3. **Retire, don't delete** — mark `[REMOVED]` and leave it in place, so old
-   evidence still resolves.
+3. **Retire, don't delete** — mark `[REMOVED]`, leave it in place, and add an
+   `amended:` line saying what replaced it.
 
 ### Every requirement ends one of two ways
 
@@ -633,6 +705,25 @@ A check **cannot** verify:
 For those, the gate is a person. Keep the two categories separate in your
 `checks.toml` and don't pretend the second is automated.
 
+### The reviewer
+
+The checks prove the code does what the checks say. They cannot tell you the
+checks were the right ones, or that the change is three times bigger than the
+problem.
+
+[`reviewer.md`](reviewer.md) is a prompt for a **separate session** to read
+the diff after the gate has already passed. Same rule as everywhere else:
+whoever did the work does not get to grade it. Give it the diff and the spec,
+nothing else — the reasoning that explains why the author did something is
+exactly what stops a reviewer noticing they shouldn't have.
+
+It has no exit code and it isn't repeatable. Ask twice, get two answers. It
+belongs where judgement belongs and nowhere near the gate.
+
+One reviewer, deliberately generic. Splitting it into a security reviewer, a
+performance reviewer and a correctness reviewer sounds thorough and produces
+three shallow passes and three files that drift apart.
+
 ---
 
 ## Layout
@@ -643,11 +734,12 @@ harness/
   trace.py   HMAC-chained append-only log. Key lives outside the project.
   gate.py    The four-condition decision.
   guard.py   Agent must not edit its own tests. Fails closed.
-  spec.py    Numbered requirements, coverage, and drift fingerprints.
+  spec.py    Numbered requirements, coverage, drift fingerprints, amendments.
   init.py    Retrofit starter files onto an existing repo. Never overwrites.
-  cli.py     init | list | red | run | gate | guard | verify | log | spec
-tests/       60 self-tests, including replays of the forgery attacks
+  cli.py     init | list | select | red | run | gate | guard | verify | log | spec
+tests/       89 self-tests, including replays of the forgery attacks
 examples/    starting checks.toml for real project shapes
+reviewer.md  prompt for a separate session to review a passing diff
 spec.template.md, decisions.template.md
 ```
 
@@ -660,6 +752,9 @@ spec.template.md, decisions.template.md
   a row could be destroyed without breaking any link.
 - **Timeouts are failures** (exit `-1`), enforced in-process. A hung check is a
   failed check.
+- **Selection can only widen.** A check with no `files` runs always, and the
+  gate ignores selection entirely. A skipped check and a passing check leave
+  the same trace.
 
 MIT.
 

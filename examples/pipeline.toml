@@ -19,6 +19,11 @@ spec = "spec.md"
 # scripts that shadow the real runner are the thing this prevents.
 protected = ["tests/", "pipeline/", "migrations/", "spec.md"]
 
+# `files` scopes a check to the paths it is about, so `harness select` can
+# shortlist it while you iterate. A check with no `files` always runs, and
+# the gate always runs everything - selection can only widen, never narrow.
+
+
 
 # --- preflight: cheap, fails in seconds, runs before anything expensive ---
 # Two seconds here beats a forty-minute run that rolls back. Assert the world
@@ -70,6 +75,7 @@ description = "every step module is reachable from the runner, not only from a s
 [[check]]
 name = "single_transaction"
 cmd = "python -m pytest tests/test_transaction.py -q"
+files = ["pipeline/", "migrations/"]
 expect = 0
 description = "the load commits once or not at all"
 
@@ -88,6 +94,7 @@ description = "running twice produces the same result as running once"
 [[check]]
 name = "counts_reconcile"
 cmd = "python -m app.reconcile"
+files = ["pipeline/", "migrations/"]
 expect = 0
 description = "row counts after the run match what the run claims it did"
 

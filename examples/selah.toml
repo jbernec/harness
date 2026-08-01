@@ -15,6 +15,11 @@
 project = "selah"
 protected = ["tests/", "fixtures/"]
 
+# `files` scopes a check to the paths it is about, so `harness select` can
+# shortlist it while you iterate. A check with no `files` always runs, and
+# the gate always runs everything - selection can only widen, never narrow.
+
+
 
 # --- layer 1: mechanics ---
 
@@ -33,6 +38,7 @@ description = "no reference to a book/chapter/verse outside the canon"
 [[check]]
 name = "canonical_range_parsing"
 cmd = "python -m pytest tests/test_parsing.py -q"
+files = ["src/refs/", "src/parse/"]
 expect = 0
 description = "'Rom 8:1-4', 'Romans 8.1-4', '1 Cor 13' all parse identically"
 
@@ -45,6 +51,7 @@ description = "same passage queried twice returns the same reference set"
 [[check]]
 name = "commentary_requires_verse"
 cmd = "python -m pytest tests/test_commentary.py -q"
+files = ["src/commentary/", "content/"]
 expect = 0
 description = "no commentary can be attached without an anchoring verse"
 
