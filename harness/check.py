@@ -14,6 +14,32 @@ from pathlib import Path
 
 DEFAULT_TIMEOUT = 900
 
+# Exit codes that mean the shell could not run the command at all. A red from
+# one of these says nothing about the code under test.
+CANNOT_RUN = {
+    126: "command found but not executable",
+    127: "command not found",
+}
+
+# Runners that distinguish "tests ran and failed" from "tests never ran".
+# Only pytest is listed because only pytest's codes have been verified:
+#   1  tests ran, something failed   <- the only legitimate red
+#   2  interrupted, e.g. ImportError while collecting
+#   3  internal error
+#   4  usage error, e.g. the named test file does not exist
+#   5  no tests were collected
+# Exits 2-5 look identical to a real failure if you only read the exit code,
+# which is how a red gets banked against a test that was never written.
+# Other runners: set `inconclusive` on the check rather than guessing here.
+RUNNER_DID_NOT_RUN: dict[str, dict[int, str]] = {
+    "pytest": {
+        2: "collection was interrupted - no test ran (often an ImportError)",
+        3: "pytest internal error - no test ran",
+        4: "usage error - the test path probably does not exist",
+        5: "no tests were collected",
+    },
+}
+
 # Running a check inside a protected directory creates build artifacts there
 # (pytest writes __pycache__ into tests/). Those are not check edits, so the
 # guard ignores them by default. Override with `guard_ignore` in checks.toml.
@@ -39,6 +65,9 @@ class Check:
     requirement_hash: str = ""
     # Paths this check is about. Empty means "everything" - it always runs.
     files: tuple[str, ...] = field(default_factory=tuple)
+    # Exit codes that mean the check never ran. None means "infer from cmd";
+    # an explicit list (including an empty one) overrides the inference.
+    inconclusive: tuple[int, ...] | None = None
 
     def concerns(self, paths: list[str]) -> bool:
         """Does this check care about any of these changed files?
@@ -50,6 +79,27 @@ class Check:
         if not self.files:
             return True
         return any(_matches(p, f) for p in self.files for f in paths)
+
+
+def did_not_run(check: Check, exit_code: int) -> str | None:
+    """Why this exit code means the check never ran, or None if it really ran.
+
+    `harness red` refuses a failure it cannot attribute to the code. A test
+    file that does not exist yet fails exactly like a test that fails, so
+    without this you can bank a red against a file you never wrote, then write
+    anything at all and the gate will accept it.
+    """
+    if exit_code in CANNOT_RUN:
+        return CANNOT_RUN[exit_code]
+
+    if check.inconclusive is not None:
+        return "declared inconclusive by the check" if exit_code in check.inconclusive else None
+
+    for runner, codes in RUNNER_DID_NOT_RUN.items():
+        if runner in check.cmd and exit_code in codes:
+            return codes[exit_code]
+    return None
+
 
 
 def _matches(pattern: str, path: str) -> bool:
@@ -147,6 +197,11 @@ def load_config(path: Path) -> Config:
             requirement=entry.get("requirement", ""),
             requirement_hash=entry.get("requirement_hash", ""),
             files=tuple(entry.get("files", [])),
+            inconclusive=(
+                tuple(int(c) for c in entry["inconclusive"])
+                if "inconclusive" in entry
+                else None
+            ),
         )
     if not checks:
         raise ValueError("config defines no checks")

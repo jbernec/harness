@@ -19,7 +19,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from harness.check import DEFAULT_GUARD_IGNORE, Check, load_config, run  # noqa: E402
+from harness.check import DEFAULT_GUARD_IGNORE, Check, did_not_run, load_config, run  # noqa: E402
 from harness.gate import evaluate  # noqa: E402
 from harness.guard import check_protected  # noqa: E402
 from harness.trace import Trace  # noqa: E402
@@ -289,3 +289,79 @@ def test_red_step_fails_when_the_check_already_passes(home, tmp_path):
     )
     code = main(["--cwd", str(tmp_path), "--config", str(tmp_path / "checks.toml"), "--json", "red", "vacuous"])
     assert code == 1
+
+
+# ── a red the check never earned ──────────────────────────────────
+#
+# A test file that does not exist yet fails exactly like a test that fails.
+# Without this, you bank a red against a file you never wrote, then write
+# anything at all and the gate accepts it. Found while building selah: the
+# workaround was to hand-write a stub so the red was an AssertionError, which
+# is discipline, not enforcement.
+
+def test_did_not_run_distinguishes_pytest_failure_from_pytest_never_running():
+    real = Check(name="t", cmd="python -m pytest tests/test_x.py -q")
+    assert did_not_run(real, 1) is None          # tests ran, one failed
+    assert did_not_run(real, 2) is not None      # ImportError while collecting
+    assert did_not_run(real, 4) is not None      # test path does not exist
+    assert did_not_run(real, 5) is not None      # nothing collected
+
+
+def test_command_not_found_is_never_a_red():
+    for cmd in ("python -m pytest x.py", "cargo test", "go test ./...", "npm test"):
+        assert did_not_run(Check(name="t", cmd=cmd), 127) is not None
+        assert did_not_run(Check(name="t", cmd=cmd), 126) is not None
+
+
+def test_non_pytest_runners_keep_their_own_exit_codes():
+    """Only pytest's codes are known. Guessing for other runners would reject
+    legitimate reds, which is worse than the hole it closes."""
+    assert did_not_run(Check(name="t", cmd="cargo test"), 2) is None
+    assert did_not_run(Check(name="t", cmd="go test ./..."), 5) is None
+
+
+def test_a_check_may_declare_its_own_inconclusive_codes():
+    declared = Check(name="t", cmd="make verify", inconclusive=(3,))
+    assert did_not_run(declared, 3) is not None
+    assert did_not_run(declared, 1) is None
+    # An explicit empty list opts out of inference entirely.
+    optout = Check(name="t", cmd="python -m pytest x.py", inconclusive=())
+    assert did_not_run(optout, 5) is None
+
+
+def test_red_refuses_a_check_that_never_ran(home, tmp_path):
+    from harness.cli import main
+    missing = f'"{sys.executable}" -m pytest {tmp_path / "no_such_test.py"} -q'
+    (tmp_path / "checks.toml").write_text(
+        f'project = "void"\n\n[[check]]\nname = "phantom"\ncmd = {json.dumps(missing)}\nexpect = 0\n'
+    )
+    argv = ["--cwd", str(tmp_path), "--config", str(tmp_path / "checks.toml"), "--json"]
+    assert main(argv + ["red", "phantom"]) == 1
+
+    # and it must not have left red evidence behind
+    rows = Trace("void").rows()
+    assert rows, "the attempt should still be recorded"
+    assert all(r["phase"] == "void" for r in rows)
+    assert all(r["phase"] != "red" for r in rows)
+
+
+def test_a_void_row_cannot_satisfy_the_gate(home, tmp_path):
+    """The hole this closes: void evidence must not reach saw_red."""
+    trace = Trace("voidgate")
+    trace.append(FAILING.name, FAILING.cmd, "void", False, 5, "no tests ran")
+    trace.append(FAILING.name, FAILING.cmd, "run", True, 0, "")
+    passing_under_same_name = Check(name=FAILING.name, cmd=FAILING.cmd, expect=1)
+    verdict = evaluate(trace, passing_under_same_name, tmp_path)
+    assert verdict.saw_red is False
+    assert verdict.ok is False
+
+
+def test_a_real_red_still_satisfies_the_gate(home, tmp_path):
+    """The guard must pass on legitimate work, not only block the bad case."""
+    trace = Trace("realred")
+    trace.append(FAILING.name, FAILING.cmd, "red", False, 1, "assert 1 == 2")
+    trace.append(FAILING.name, FAILING.cmd, "run", True, 1, "")
+    inverted = Check(name=FAILING.name, cmd=FAILING.cmd, expect=1)
+    verdict = evaluate(trace, inverted, tmp_path)
+    assert verdict.saw_red is True
+    assert verdict.ok is True

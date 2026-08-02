@@ -24,7 +24,7 @@ import json
 import sys
 from pathlib import Path
 
-from .check import changed_files, load_config, run, select
+from .check import changed_files, did_not_run, load_config, run, select
 from .gate import evaluate
 from .guard import check_protected
 from .init import init
@@ -67,7 +67,12 @@ def cmd_red(cfg, args, cwd, trace) -> int:
     """Observe the failure first. This is the step that makes the rest mean anything."""
     check = _resolve(cfg, args.name)
     result = run(check, cwd)
-    trace.append(check.name, check.cmd, "red", result.ok, result.exit_code, result.output)
+
+    # A failure the check never earned is not a baseline. Recorded under a
+    # phase the gate ignores, so it is auditable without counting as red.
+    void = None if result.ok else did_not_run(check, result.exit_code)
+    phase = "void" if void else "red"
+    trace.append(check.name, check.cmd, phase, result.ok, result.exit_code, result.output)
 
     if result.ok:
         msg = (
@@ -76,6 +81,20 @@ def cmd_red(cfg, args, cwd, trace) -> int:
             "      Fix the check, then try again."
         )
         _emit({"ok": False, "check": check.name, "reason": "check passed during red step"}, args.json)
+        if not args.json:
+            print(msg)
+        return 1
+
+    if void:
+        msg = (
+            f"{NO}  '{check.name}' failed (exit {result.exit_code}), but it never ran: {void}.\n"
+            "      A check that could not run has not told you anything about the code.\n"
+            "      Write the failing test first, watch it fail on its own terms, then run red."
+        )
+        _emit(
+            {"ok": False, "check": check.name, "exit_code": result.exit_code, "reason": f"did not run: {void}"},
+            args.json,
+        )
         if not args.json:
             print(msg)
         return 1
@@ -89,11 +108,22 @@ def cmd_red(cfg, args, cwd, trace) -> int:
 def cmd_run(cfg, args, cwd, trace) -> int:
     check = _resolve(cfg, args.name)
     result = run(check, cwd)
-    trace.append(check.name, check.cmd, "run", result.ok, result.exit_code, result.output)
-    _emit({"ok": result.ok, "check": check.name, "exit_code": result.exit_code}, args.json)
+
+    # Same rule as red: `run` also writes rows the gate reads for saw_red, so
+    # a check that never ran must not become red evidence by the back door.
+    void = None if result.ok else did_not_run(check, result.exit_code)
+    trace.append(check.name, check.cmd, "void" if void else "run", result.ok, result.exit_code, result.output)
+
+    _emit(
+        {"ok": result.ok, "check": check.name, "exit_code": result.exit_code, **({"reason": f"did not run: {void}"} if void else {})},
+        args.json,
+    )
     if not args.json:
-        state = "GREEN" if result.ok else "RED"
-        print(f"{OK if result.ok else NO}  '{check.name}' is {state} (exit {result.exit_code}).")
+        if void:
+            print(f"{NO}  '{check.name}' did not run (exit {result.exit_code}): {void}.")
+        else:
+            state = "GREEN" if result.ok else "RED"
+            print(f"{OK if result.ok else NO}  '{check.name}' is {state} (exit {result.exit_code}).")
     return 0 if result.ok else 1
 
 

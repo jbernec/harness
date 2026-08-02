@@ -84,6 +84,33 @@ description = "every registered handler is reachable from the entry point"
 Make it a test, not a script. An unreachable module should fail CI, not wait
 for someone to remember a linter exists.
 
+## 5. The red that was never earned
+
+The other four are checks that stop working. This one is a check that never
+started, and it is the only one on the list that fakes its own evidence.
+
+`harness red` requires a check to fail before the work begins. But a test file
+that does not exist yet fails too, and by exit code alone it looks identical
+to a test that fails:
+
+```bash
+pytest tests/test_parser.py -q   # assertion failed        -> 1
+pytest tests/test_parser.py -q   # ImportError collecting  -> 2
+pytest tests/test_parser.py -q   # file does not exist     -> 4
+pytest tests/test_parser.py -q   # nothing collected       -> 5
+```
+
+Bank one of the last three as your baseline and the trace shows a clean
+red → green for a test that was never written. The gate accepts it, correctly:
+the trace says it was broken, then wasn't.
+
+`red` now refuses exits 2, 3, 4 and 5 for pytest, and 126/127 everywhere. What
+it cannot see is a missing runner — `python -m pytest` without pytest installed
+exits 1 like any failing test. Run the suite once by hand before the first red.
+
+The discipline the tool cannot enforce: write the failing test, watch it fail
+**for the reason you expect**, then run `red`. An exit code is not a reason.
+
 ## And before you write any of it
 
 **Check whether the thing already exists.** A runner you didn't know about

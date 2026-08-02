@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .check import Check, run
+from .check import Check, did_not_run, run
 from .trace import Trace
 
 
@@ -51,7 +51,8 @@ def evaluate(trace: Trace, check: Check, cwd: Path) -> GateResult:
         elif saw_red:
             green_after_red = True
 
-    currently_green = run(check, cwd).ok
+    current = run(check, cwd)
+    currently_green = current.ok
 
     ok = chain_intact and saw_red and green_after_red and currently_green
 
@@ -62,7 +63,11 @@ def evaluate(trace: Trace, check: Check, cwd: Path) -> GateResult:
     elif not green_after_red:
         reason = "observed RED but never GREEN afterward - not done yet"
     elif not currently_green:
-        reason = "trace shows red->green but the check is RED right now - it regressed"
+        void = did_not_run(check, current.exit_code)
+        if void:
+            reason = f"the check did not run at gate time ({void}) - no verdict is possible"
+        else:
+            reason = "trace shows red->green but the check is RED right now - it regressed"
     else:
         reason = "red -> green in an intact chain, and still green now"
 

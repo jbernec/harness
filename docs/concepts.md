@@ -41,6 +41,32 @@ wired up wrong. A green check on its own means nothing.
 A check you *watched fail*, then watched pass, after a change you can point
 to — that means something. The trace is what preserves the "then".
 
+But only if the check actually ran. A test file that does not exist yet fails
+with a non-zero exit code, exactly like a test that fails. Bank that as your
+red and you have evidence about nothing: write anything at all afterwards and
+the gate accepts it.
+
+So `red` refuses a failure it cannot attribute to the code:
+
+```
+FAIL  'parser' failed (exit 4), but it never ran: usage error - the test
+      path probably does not exist.
+```
+
+For pytest, only exit 1 is a real red — 2 is an ImportError while collecting,
+4 is a missing path, 5 is nothing collected. Exit 126 and 127 are refused for
+every runner: the shell could not start the command. Other runners' codes are
+not guessed; declare them per check with `inconclusive = [...]` if you need
+them, or `inconclusive = []` to opt out.
+
+The refused attempt is still written to the trace, under a phase the gate
+ignores. Evidence of what happened, without counting as proof.
+
+One hole this does not close: a runner that is missing entirely often exits 1.
+`python -m pytest` with pytest uninstalled prints "No module named pytest" and
+exits 1, which is indistinguishable from a genuine failure by exit code alone.
+Run your suite once before trusting the first red.
+
 ---
 
 ## Spec vs harness
