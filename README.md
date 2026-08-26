@@ -32,16 +32,20 @@ ends up unused.
 ## Install
 
 ```bash
-git clone https://github.com/jbernec/harness && cd harness && pip install -e .
+pip install "harness @ git+https://github.com/jbernec/harness@v0.5.0"
 ```
 
-On an existing project:
+Pin the tag, not `main`. `main` moves; a tag is a decision.
+
+Then in the project you want to verify:
 
 ```bash
 cd your-project
-harness init          # writes checks.toml, spec.md, decisions.md, AGENTS.md
-                      # never overwrites anything
+harness init          # checks.toml, spec.md, decisions.md, AGENTS.md,
+                      # and a CI workflow. Never overwrites anything.
 ```
+
+Using it across several projects? → [Standardizing](docs/standardizing.md)
 
 ---
 
@@ -100,6 +104,20 @@ harness select                # which checks concern what I changed?
 A check with no `files` always runs, and **the gate never selects** —
 otherwise the easy way to pass is to touch nothing the suite watches.
 
+### In CI
+
+`harness init` writes a workflow that installs the pinned harness and runs:
+
+```bash
+harness version      # is this the harness this project was gated with?
+harness guard        # were protected paths touched?
+harness run --all    # every check, no stopping at the first failure
+```
+
+CI proves the checks pass from a clean checkout. It does **not** gate — a
+fresh runner has no trace, so it has no red to point at. Red-then-green is
+proved locally, where the work happened.
+
 ---
 
 ## Handing work to an agent
@@ -144,6 +162,7 @@ say; they cannot say the checks were the right ones.
 | [Runners](docs/runners.md) | when to improvise, when the steps must live in a file |
 | [How checks fail](docs/failures.md) | four ways a check quietly stops working |
 | [Retrofitting](docs/retrofit.md) | putting this on a project that already exists |
+| [Standardizing](docs/standardizing.md) | one harness across many projects: pinning, CI, rollout |
 | [Trace and guard](docs/security.md) | why the evidence cannot be forged |
 
 ---
@@ -158,26 +177,13 @@ harness/
   guard.py   Agent must not edit its own tests. Fails closed.
   spec.py    Numbered requirements, coverage, drift fingerprints, amendments.
   init.py    Retrofit starter files onto an existing repo. Never overwrites.
-  cli.py     init | list | select | red | run | gate | guard | verify | log | spec
-tests/       89 self-tests, including replays of the forgery attacks
+  version.py The pin. Same feature release, or refuse.
+  cli.py     init | list | select | red | run | gate | guard | verify | version | log | spec
+tests/       133 self-tests, including replays of the forgery attacks
 examples/    starting checks.toml for aria, selah, ifetch, and pipelines
 reviewer.md  prompt for a separate session to review a passing diff
 ```
 
-## Design notes
-
-- **Zero runtime dependencies** — stdlib `tomllib`, so `checks.toml` needs no parser.
-- **A red must be earned.** A test file that does not exist yet fails exactly
-  like a test that fails, so `red` refuses exit codes it can attribute to the
-  check never running — 2/3/4/5 for pytest, 126/127 for any runner. Set
-  `inconclusive = [...]` on a check for other runners, or `[]` to opt out.
-  The refused attempt is still traced, under a phase the gate ignores.
-- **Check identity is name + cmd.** Weaken the command and old red evidence stops
-  applying — you cannot inherit a red from a harder version of the check.
-- **An unparseable trace row counts as a break**, not an absent row. Otherwise a
-  row could be destroyed without breaking any link.
-- **Timeouts are failures** (exit `-1`). A hung check is a failed check.
-- **Selection can only widen.** Unscoped checks always run; the gate ignores
-  selection. A skipped check and a passing check leave the same trace.
+Design notes: [concepts](docs/concepts.md#design-notes).
 
 MIT.

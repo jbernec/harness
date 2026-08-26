@@ -59,3 +59,24 @@ def test_the_readme_stays_short():
     """
     n = len((ROOT / "README.md").read_text(encoding="utf-8").splitlines())
     assert n <= 200, f"README is {n} lines - move a section into docs/"
+
+
+def test_documented_install_commands_pin_the_current_version():
+    """Docs telling people to install a version that is not this one is the
+    exact drift the pin exists to stop - and it would ship silently.
+
+    The needle is derived from the module, never typed, so this check cannot
+    become another copy of the version number.
+    """
+    import re
+    import sys
+
+    sys.path.insert(0, str(ROOT))
+    from harness.version import __version__
+
+    stale = []
+    for md in markdown_files():
+        for ref in re.findall(r"jbernec/harness@v?([0-9][^\s\"')]*)", md.read_text(encoding="utf-8")):
+            if ref != __version__:
+                stale.append(f"{md.relative_to(ROOT)} -> v{ref}")
+    assert not stale, f"docs install v{__version__} elsewhere: {stale}"

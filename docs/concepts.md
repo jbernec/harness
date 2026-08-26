@@ -2,7 +2,7 @@
 
 Why the harness is shaped the way it is. Read once.
 
-[README](../README.md) · [Concepts](concepts.md) · [Requirements](requirements.md) · [Runners](runners.md) · [How checks fail](failures.md) · [Retrofitting](retrofit.md) · [Trace and guard](security.md)
+[README](../README.md) · [Concepts](concepts.md) · [Requirements](requirements.md) · [Runners](runners.md) · [How checks fail](failures.md) · [Retrofitting](retrofit.md) · [Standardizing](standardizing.md) · [Trace and guard](security.md)
 
 ---
 
@@ -125,3 +125,21 @@ Templates: [`spec.template.md`](../spec.template.md),
 [`decisions.template.md`](../decisions.template.md).
 
 ---
+
+---
+
+## Design notes
+
+- **Zero runtime dependencies** — stdlib `tomllib`, so `checks.toml` needs no parser.
+- **A red must be earned.** A test file that does not exist yet fails exactly
+  like a test that fails, so `red` refuses exit codes it can attribute to the
+  check never running — 2/3/4/5 for pytest, 126/127 for any runner. Set
+  `inconclusive = [...]` on a check for other runners, or `[]` to opt out.
+  The refused attempt is still traced, under a phase the gate ignores.
+- **Check identity is name + cmd.** Weaken the command and old red evidence stops
+  applying — you cannot inherit a red from a harder version of the check.
+- **An unparseable trace row counts as a break**, not an absent row. Otherwise a
+  row could be destroyed without breaking any link.
+- **Timeouts are failures** (exit `-1`). A hung check is a failed check.
+- **Selection can only widen.** Unscoped checks always run; the gate ignores
+  selection. A skipped check and a passing check leave the same trace.

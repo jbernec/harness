@@ -14,13 +14,28 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .spec import bless, parse as parse_spec
+from .version import __version__
+
 CHECKS = '''\
 project = "{project}"
 spec = "spec.md"
 
+# The harness release this project is gated with. `harness version` refuses
+# to run under a different feature release, so "green" cannot quietly come to
+# mean something else across your projects. Bumping this is deliberate.
+harness_version = "{harness_version}"
+
 # Paths the agent must not touch. If anything here changed since HEAD,
 # the gate refuses - new untracked files included.
 protected = ["tests/", "spec.md"]
+
+
+[[check]]
+name = "harness_version"
+cmd = "harness version"
+expect = 0
+description = "the installed harness is the one this project was gated with"
 
 
 [[check]]
@@ -120,8 +135,8 @@ For any coding agent working in this repo.
 
 5. **Never hand-write a sequence that already has a runner.** If a procedure
    exists as a script or make target, invoke it. Do not retype it or write a
-   temp script that does the same thing. A dropped step in a database
-   procedure is not a typo, it is a corrupted table.
+   temp script that does the same thing. A dropped step in an ordered
+   procedure is not a typo, it is an unrecoverable state.
 
 6. **Irreversible actions are on rails.** Production writes, orders, money,
    deploys, messages to real people: runner only. Improvise freely anywhere
@@ -130,6 +145,14 @@ For any coding agent working in this repo.
 7. **If a check will not pass, say why.** A clear "I could not do this
    because X" is worth more than a green you engineered by gutting the
    assertion.
+
+8. **Do not edit the harness.** Not `harness/`, not `harness_version`.
+   Changing the grader makes every green in this project meaningless,
+   including the ones you did not touch.
+
+9. **Be brief.** Answer first, then evidence, then stop. No preamble, no
+   closing summary. Prefer a list over prose. Report results rather than
+   narrating what you are about to do. Long output is not thoroughness.
 
 ## Task template
 
@@ -141,6 +164,51 @@ Do not edit anything under tests/.
 Do not change the command.
 When you are done, list only the files you changed.
 ```
+'''
+
+# A gate that only ever runs on one laptop is a gate one person can skip.
+# This runs the same checks on every push, from a clean checkout.
+#
+# The trace and key live outside the repo, so CI starts with no history and
+# therefore no red to point at. That is honest, not a gap: CI proves the
+# checks pass, and the red-then-green ordering is proved locally where the
+# work happened. Do not try to fake a red in CI to make the gate open.
+WORKFLOW = '''\
+name: harness
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # the guard compares against HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the pinned harness
+        run: pip install "harness @ git+https://github.com/jbernec/harness@v{harness_version}"
+
+      - name: Version pin
+        run: harness version
+
+      - name: Spec is honest
+        run: |
+          harness spec coverage
+          harness spec sync
+          harness spec history
+
+      - name: Protected paths untouched
+        run: harness guard
+
+      - name: Every check
+        run: harness run --all
 '''
 
 # Ordered: the first match wins, so put the more specific markers first.
@@ -165,17 +233,23 @@ def detect_test_command(cwd: Path) -> str:
     return "echo 'set a real test command' && false"
 
 
-def init(cwd: Path, project: str | None = None) -> dict:
+def init(cwd: Path, project: str | None = None, ci: bool = True) -> dict:
     """Write starter files. Never overwrites - existing work is yours."""
     name = project or cwd.resolve().name
     test_cmd = detect_test_command(cwd)
 
     files = {
-        "checks.toml": CHECKS.format(project=name, test_cmd=test_cmd),
+        "checks.toml": CHECKS.format(
+            project=name, test_cmd=test_cmd, harness_version=__version__
+        ),
         "spec.md": SPEC.format(project=name),
         "decisions.md": DECISIONS,
         "AGENTS.md": AGENTS,
     }
+    if ci:
+        files[".github/workflows/harness.yml"] = WORKFLOW.format(
+            harness_version=__version__
+        )
 
     written, skipped = [], []
     for filename, content in files.items():
@@ -183,13 +257,25 @@ def init(cwd: Path, project: str | None = None) -> dict:
         if path.exists():
             skipped.append(filename)
             continue
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         written.append(filename)
+
+    # Bless the placeholder requirement we just wrote. Both sides came from
+    # here, so they match by construction and saying otherwise is noise - and
+    # a scaffold that is red on day one for a reason nobody caused is how a
+    # check earns a reputation for crying wolf. The first real edit to
+    # spec.md then goes red correctly, which is the point.
+    if {"checks.toml", "spec.md"} <= set(written):
+        for req in parse_spec(cwd / "spec.md"):
+            if req.check:
+                bless(cwd / "checks.toml", req.check, req.fingerprint)
 
     return {
         "ok": True,
         "project": name,
         "test_cmd": test_cmd,
+        "harness_version": __version__,
         "written": written,
         "skipped": skipped,
     }

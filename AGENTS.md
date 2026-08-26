@@ -83,6 +83,12 @@ disagree, no one knows which one is current.
     set. Never argue that a check "wasn't selected" — that is the same
     sentence as "I did not run it."
 
+13. **Do not edit the harness to make your work pass.** `harness/` and
+    `harness_version` in `checks.toml` are not yours. If the harness is
+    genuinely wrong, say so and stop — changing the grader is the one move
+    that makes every green result in this project meaningless, including
+    the ones you did not touch.
+
 ## The loop you are part of
 
 ```

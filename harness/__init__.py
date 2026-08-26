@@ -5,8 +5,7 @@ from .gate import GateResult, evaluate
 from .guard import check_protected
 from .spec import Requirement, coverage, parse_spec, sync
 from .trace import Trace
-
-__version__ = "0.4.0"
+from .version import __version__, compatible
 
 __all__ = [
     "Check",
@@ -15,7 +14,9 @@ __all__ = [
     "GateResult",
     "Requirement",
     "Trace",
+    "__version__",
     "check_protected",
+    "compatible",
     "coverage",
     "evaluate",
     "load_config",

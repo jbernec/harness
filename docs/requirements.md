@@ -5,7 +5,7 @@ Numbered requirements, drift fingerprints, and amendments.
 This is documentation *about* the spec layer. Your project's own spec lives
 at `spec.md` in its root.
 
-[README](../README.md) · [Concepts](concepts.md) · [Requirements](requirements.md) · [Runners](runners.md) · [How checks fail](failures.md) · [Retrofitting](retrofit.md) · [Trace and guard](security.md)
+[README](../README.md) · [Concepts](concepts.md) · [Requirements](requirements.md) · [Runners](runners.md) · [How checks fail](failures.md) · [Retrofitting](retrofit.md) · [Standardizing](standardizing.md) · [Trace and guard](security.md)
 
 ---
 

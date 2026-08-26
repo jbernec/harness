@@ -168,6 +168,7 @@ class Config:
     protected: list[str]
     guard_ignore: list[str]
     spec: str
+    harness_version: str = ""
 
 
 def load_config(path: Path) -> Config:
@@ -212,6 +213,7 @@ def load_config(path: Path) -> Config:
         protected=list(data.get("protected", ["tests/"])),
         guard_ignore=list(data.get("guard_ignore", DEFAULT_GUARD_IGNORE)),
         spec=data.get("spec", "spec.md"),
+        harness_version=str(data.get("harness_version", "")),
     )
 
 

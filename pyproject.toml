@@ -1,6 +1,6 @@
 [project]
 name = "harness"
-version = "0.4.0"
+version = "0.5.0"
 description = "Prove an AI coding agent actually did the work: check, red first, trace, gate."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -11,7 +11,7 @@ dependencies = []
 harness = "harness.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+dev = ["pytest>=7", "pyyaml>=6"]
 
 [build-system]
 requires = ["setuptools>=68"]

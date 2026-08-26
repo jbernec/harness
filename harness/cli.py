@@ -8,6 +8,7 @@
     harness gate <name>          decide whether the work is done
     harness guard                confirm protected paths were not edited
     harness verify               verify the trace chain
+    harness version              fail if the installed harness is not the pinned one
     harness log [name]           print recorded evidence
     harness spec list            requirements and how each is settled
     harness spec coverage        fail if a requirement has no check and no gate
@@ -30,6 +31,7 @@ from .guard import check_protected
 from .init import init
 from .trace import Trace
 from . import spec
+from .version import __version__, status as version_status
 
 OK = "PASS"
 NO = "FAIL"
@@ -106,6 +108,8 @@ def cmd_red(cfg, args, cwd, trace) -> int:
 
 
 def cmd_run(cfg, args, cwd, trace) -> int:
+    if getattr(args, "all", False):
+        return _run_all(cfg, args, cwd, trace)
     check = _resolve(cfg, args.name)
     result = run(check, cwd)
 
@@ -163,6 +167,51 @@ def cmd_select(cfg, args, cwd, trace) -> int:
         print(f"\n  not concerned: {', '.join(payload['skipped'])}")
     print("\nThis is a shortlist for iterating. Gate on the full set.")
     return 0
+
+
+def _run_all(cfg, args, cwd, trace) -> int:
+    """Every check, once, without stopping at the first failure.
+
+    CI wants the whole picture in one run - stopping early means fixing one
+    thing, pushing, and waiting to discover the next. It does not select:
+    running a subset in CI would let a change pass by touching nothing the
+    suite watches.
+    """
+    results = []
+    for check in cfg.checks.values():
+        result = run(check, cwd)
+        void = None if result.ok else did_not_run(check, result.exit_code)
+        trace.append(
+            check.name, check.cmd, "void" if void else "run",
+            result.ok, result.exit_code, result.output,
+        )
+        results.append((check, result, void))
+
+    failed = [c.name for c, r, _ in results if not r.ok]
+    ok = not failed
+
+    if args.json:
+        print(json.dumps({
+            "ok": ok,
+            "total": len(results),
+            "failed": failed,
+            "checks": [
+                {"check": c.name, "ok": r.ok, "exit_code": r.exit_code,
+                 **({"reason": f"did not run: {v}"} if v else {})}
+                for c, r, v in results
+            ],
+        }, indent=2))
+        return 0 if ok else 1
+
+    for check, result, void in results:
+        if void:
+            print(f"{NO}  {check.name:<28} did not run (exit {result.exit_code}): {void}")
+        else:
+            print(f"{OK if result.ok else NO}  {check.name:<28} exit {result.exit_code}")
+    print()
+    print(f"{OK if ok else NO}  {len(results) - len(failed)}/{len(results)} passed"
+          + ("" if ok else f" - failed: {', '.join(failed)}"))
+    return 0 if ok else 1
 
 
 def cmd_gate(cfg, args, cwd, trace) -> int:
@@ -230,6 +279,19 @@ def cmd_log(cfg, args, cwd, trace) -> int:
         state = "GREEN" if r["ok"] else "RED  "
         print(f"{r['ts']}  {state}  {r['phase']:<5}  {r['check']}")
     return 0
+
+
+def cmd_version(cfg, args, cwd, trace) -> int:
+    """Does the installed harness match the one this project was gated with?
+
+    Exits non-zero on a mismatch, so it works as a check like any other and
+    fails the whole suite rather than being something you remember to look at.
+    """
+    result = version_status(cfg.harness_version, __version__)
+    _emit(result, args.json)
+    if not args.json:
+        print(f"{OK if result['ok'] else NO}  {result['reason']}")
+    return 0 if result["ok"] else 1
 
 
 def cmd_spec(cfg, args, cwd, trace) -> int:
@@ -340,7 +402,7 @@ def cmd_spec(cfg, args, cwd, trace) -> int:
 
 def cmd_init(args, cwd) -> int:
     """Write starter files into an existing repository."""
-    result = init(cwd, args.project)
+    result = init(cwd, args.project, ci=not args.no_ci)
 
     if args.json:
         print(json.dumps(result))
@@ -378,6 +440,7 @@ COMMANDS = {
     "verify": cmd_verify,
     "log": cmd_log,
     "spec": cmd_spec,
+    "version": cmd_version,
 }
 
 
@@ -388,37 +451,61 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="machine-readable output")
 
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("list")
-    p_select = sub.add_parser("select")
+
+    def add(name: str, parent=sub):
+        """Register a subcommand that also accepts the global flags.
+
+        `harness list --json` is what everybody types, and argparse rejects it
+        by default because the flag belongs to the parent. SUPPRESS means the
+        subparser only sets the value when the flag is actually given, so the
+        parent's value survives when it isn't.
+        """
+        p = parent.add_parser(name)
+        for flag, kwargs in (
+            ("--json", {"action": "store_true"}),
+            ("--config", {}),
+            ("--cwd", {}),
+        ):
+            p.add_argument(flag, default=argparse.SUPPRESS, **kwargs)
+        return p
+
+    add("list")
+    p_select = add("select")
     p_select.add_argument("--base", help="git ref to diff against, e.g. main")
     for name in ("red", "run", "gate"):
-        p = sub.add_parser(name)
-        p.add_argument("name")
+        p = add(name)
+        p.add_argument("name", nargs="?" if name == "run" else None)
         if name == "gate":
             p.add_argument("--skip-guard", action="store_true")
-    sub.add_parser("guard")
-    sub.add_parser("verify")
-    p_log = sub.add_parser("log")
+        if name == "run":
+            p.add_argument("--all", action="store_true", help="run every check")
+    add("guard")
+    add("verify")
+    add("version")
+    p_log = add("log")
     p_log.add_argument("name", nargs="?")
 
-    p_spec = sub.add_parser("spec")
+    p_spec = add("spec")
     spec_sub = p_spec.add_subparsers(dest="spec_action", required=True)
-    spec_sub.add_parser("list")
-    spec_sub.add_parser("coverage")
-    spec_sub.add_parser("sync")
-    spec_sub.add_parser("history")
-    p_amend = spec_sub.add_parser("amend")
+    add("list", spec_sub)
+    add("coverage", spec_sub)
+    add("sync", spec_sub)
+    add("history", spec_sub)
+    p_amend = add("amend", spec_sub)
     p_amend.add_argument("id", help="requirement id")
     p_amend.add_argument("--reason", required=True, help="why it changed")
     p_amend.add_argument("--on", help="date, defaults to today")
-    p_bless = spec_sub.add_parser("bless")
+    p_bless = add("bless", spec_sub)
     p_bless.add_argument("id", nargs="?", help="requirement id, or omit for all")
     p_bless.add_argument("--reason", help="required when re-blessing a changed requirement")
 
-    p_init = sub.add_parser("init")
+    p_init = add("init")
     p_init.add_argument("--project", help="project name (defaults to the directory name)")
+    p_init.add_argument("--no-ci", action="store_true", help="skip the CI workflow")
 
     args = parser.parse_args(argv)
+    if getattr(args, "command", None) == "run" and not args.all and not args.name:
+        parser.error("run needs a check name, or --all")
     cwd = Path(args.cwd).resolve()
 
     # init runs before a config exists, so it cannot require one.

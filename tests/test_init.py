@@ -16,10 +16,14 @@ from harness.init import detect_test_command, init  # noqa: E402
 from harness.spec import coverage, parse  # noqa: E402
 
 
-def test_writes_the_four_starter_files(tmp_path):
+STARTER = ("checks.toml", "spec.md", "decisions.md", "AGENTS.md")
+WORKFLOW = ".github/workflows/harness.yml"
+
+
+def test_writes_the_starter_files(tmp_path):
     result = init(tmp_path)
-    assert set(result["written"]) == {"checks.toml", "spec.md", "decisions.md", "AGENTS.md"}
-    for f in ("checks.toml", "spec.md", "decisions.md", "AGENTS.md"):
+    assert set(result["written"]) == {*STARTER, WORKFLOW}
+    for f in (*STARTER, WORKFLOW):
         assert (tmp_path / f).exists()
 
 
@@ -37,13 +41,12 @@ def test_never_overwrites_existing_files(tmp_path):
 
 def test_running_twice_changes_nothing(tmp_path):
     init(tmp_path)
-    before = {f: (tmp_path / f).read_text(encoding="utf-8") for f in
-              ("checks.toml", "spec.md", "decisions.md", "AGENTS.md")}
+    before = {f: (tmp_path / f).read_text(encoding="utf-8") for f in (*STARTER, WORKFLOW)}
 
     second = init(tmp_path)
 
     assert second["written"] == []
-    assert len(second["skipped"]) == 4
+    assert set(second["skipped"]) == {*STARTER, WORKFLOW}
     for f, text in before.items():
         assert (tmp_path / f).read_text(encoding="utf-8") == text
 
