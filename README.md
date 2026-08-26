@@ -13,6 +13,16 @@ harness gate mycheck    # 2. the harness decides. not the agent.
 The rule underneath all of it: **whoever does the work does not grade the
 work.** The cheapest way to satisfy a grader you control is to lower it.
 
+Four parts, one assembly — and **none of them is a test**. A test is one kind
+of check:
+
+| Check | Red first | Trace | Gate |
+|---|---|---|---|
+| instrument | calibration | record | verdict |
+
+Any three of these is a habit. All four is a harness.
+→ [Concepts](docs/concepts.md)
+
 ---
 
 ## Which problem do you have?
@@ -179,11 +189,9 @@ harness/
   init.py    Retrofit starter files onto an existing repo. Never overwrites.
   version.py The pin. Same feature release, or refuse.
   cli.py     init | list | select | red | run | gate | guard | verify | version | log | spec
-tests/       133 self-tests, including replays of the forgery attacks
+tests/       self-tests, including replays of the forgery attacks
 examples/    starting checks.toml for aria, selah, ifetch, and pipelines
 reviewer.md  prompt for a separate session to review a passing diff
 ```
 
-Design notes: [concepts](docs/concepts.md#design-notes).
-
-MIT.
+Design notes: [concepts](docs/concepts.md#design-notes). MIT.

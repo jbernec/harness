@@ -24,14 +24,35 @@ You have no idea if that's true. The agent graded its own homework. It may have:
 
 A harness is not one thing. It is four small things assembled.
 
-| # | Primitive | What it is | Why it exists |
-|---|-----------|-----------|---------------|
-| 1 | **Check** | A command + the exit code that counts as passing | A fact, not an opinion |
-| 2 | **Red first** | Run the check *before* the fix. It must fail | A check never seen failing proves nothing |
-| 3 | **Trace** | An append-only, tamper-evident log of every result | Order is the evidence: red *then* green |
-| 4 | **Gate** | Reads the trace and decides | Must not be the agent |
+| # | Primitive | In a word | What it is |
+|---|---|---|---|
+| 1 | **Check** | Instrument | A command whose exit code is the measurement |
+| 2 | **Red first** | Calibration | Prove the instrument moves before trusting its reading |
+| 3 | **Trace** | Record | A tamper-evident log of what was measured, in order |
+| 4 | **Gate** | Verdict | Reads the record and rules - and is not the one being judged |
 
 The four are the parts. **The harness is the assembly.**
+
+### They are not four kinds of test
+
+The most common misreading. A **test is one kind of check** - a common one,
+not the only one. `git status --porcelain` is a check. So is a script that
+counts rows, or one that runs a command twice and diffs the output. Anything
+that exits 0 or non-zero for a reason you can state.
+
+And the other three are not tests at all. They are what turns a reading into
+evidence:
+
+| | Without it |
+|---|---|
+| Check | you have an opinion |
+| Red first | an instrument you never calibrated, reading anything |
+| Trace | a calibration nobody wrote down - hearsay |
+| Gate | a record nobody rules on - a diary |
+
+**They only work together.** Any three of them is a habit. All four is a
+harness. And a verdict delivered by the accused is not a verdict, which is
+why the gate must never be the thing that did the work.
 
 ### Why "red first" is the load-bearing one
 
