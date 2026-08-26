@@ -24,14 +24,20 @@ You have no idea if that's true. The agent graded its own homework. It may have:
 
 A harness is not one thing. It is four small things assembled.
 
-| # | Primitive | In a word | What it is |
+| # | Component | Plainly | Precisely |
 |---|---|---|---|
-| 1 | **Check** | Instrument | A command whose exit code is the measurement |
-| 2 | **Red first** | Calibration | Prove the instrument moves before trusting its reading |
-| 3 | **Trace** | Record | A tamper-evident log of what was measured, in order |
-| 4 | **Gate** | Verdict | Reads the record and rules - and is not the one being judged |
+| 1 | **Check** | the measurement | A command whose exit code is the measurement |
+| 2 | **Red first** | proof the measurement works | Prove the instrument moves before trusting its reading |
+| 3 | **Trace** | evidence, sealed | An ordered log that cannot be edited afterwards |
+| 4 | **Gate** | go / no-go | Reads the record and rules - and is not the one being judged |
+
+> Measure it, prove the measurement works, seal the result, then let
+> something else say go or no-go.
 
 The four are the parts. **The harness is the assembly.**
+
+"Primitive" means each one stops working if you break it down further.
+"Component" means the same thing in plainer words - use whichever lands.
 
 ### They are not four kinds of test
 
@@ -53,6 +59,37 @@ evidence:
 **They only work together.** Any three of them is a habit. All four is a
 harness. And a verdict delivered by the accused is not a verdict, which is
 why the gate must never be the thing that did the work.
+
+### The gate is go / no-go, with one difference
+
+Binary, no partial credit, no override flag - so far, the same thing you
+would recognise from any launch or release call.
+
+The difference is who makes it. A go/no-go is normally a person weighing up
+the situation. **The gate does not weigh anything up.** It reads the record
+and asks four fixed questions: was the chain intact, was a red observed, did
+green follow that red, is it still green now. There is no judgement in it,
+which is exactly why it cannot be talked round.
+
+Keep judgement where it belongs - `gate: human` on the requirement, and
+[`reviewer.md`](../reviewer.md) for a second pair of eyes. Just never inside
+the gate.
+
+### A trace is not a log
+
+A log tells you what happened. **A trace tells you nobody changed the story.**
+
+| | Holds |
+|---|---|
+| A log | what happened, and when |
+| A trace | what happened, when, **in what order**, and **provably unedited** |
+
+Order is half the point: red *then* green is evidence, green then red is not,
+and a log you can rewrite cannot tell the two apart. That is why the rows are
+HMAC-chained and the key lives outside the project.
+
+A diary can be rewritten tonight. A flight recorder cannot - and that is the
+entire reason to carry one. See [trace and guard](security.md).
 
 ### Why "red first" is the load-bearing one
 

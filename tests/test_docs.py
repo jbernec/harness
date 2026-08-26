@@ -80,3 +80,87 @@ def test_documented_install_commands_pin_the_current_version():
             if ref != __version__:
                 stale.append(f"{md.relative_to(ROOT)} -> v{ref}")
     assert not stale, f"docs install v{__version__} elsewhere: {stale}"
+
+
+# Counts written out in prose - "twelve rules", "133 self-tests". Both of
+# these went stale within a week of being written, because keeping them true
+# depends on remembering. That is failure mode 1 in docs/failures.md: a
+# number you maintain by hand is another copy of the thing it describes.
+NUMBERS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
+    "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+}
+
+
+def agent_rule_count() -> int:
+    """Derived from AGENTS.md, never typed. A check that copies the value it
+    guards becomes another copy of it."""
+    import re
+
+    return len(re.findall(r"^\d+\. \*\*", (ROOT / "AGENTS.md").read_text(encoding="utf-8"), re.M))
+
+
+def test_agents_md_has_rules_to_count():
+    assert agent_rule_count() >= 5, "the parser stopped matching - fix it, don't delete it"
+
+
+def test_no_document_states_a_stale_rule_count():
+    """"...its twelve rules" survived three rules being added.
+
+    Scoped to sentences that are actually about AGENTS.md. A first version
+    matched every "N rules" in the repo and flagged "Three rules for IDs",
+    which is a different set entirely - failure mode 2, a guard that cries
+    wolf gets switched off.
+    """
+    import re
+
+    actual = agent_rule_count()
+    wrong = []
+    for md in markdown_files():
+        for line in md.read_text(encoding="utf-8").splitlines():
+            if not re.search(r"AGENTS\.md|\bagent(s|'s)?\b", line, re.I):
+                continue
+            for word in re.findall(r"\b([a-z]+|\d+) rules\b", line, re.I):
+                n = NUMBERS.get(word.lower(), int(word) if word.isdigit() else None)
+                if n is not None and n != actual:
+                    wrong.append(f"{md.relative_to(ROOT)}: '{word} rules', AGENTS.md has {actual}")
+    assert not wrong, "; ".join(wrong) + " - state no number rather than a wrong one"
+
+
+def test_the_rule_count_check_catches_a_stale_number():
+    """Proved in both directions, per rule 9. A guard only ever seen passing
+    is decoration - this one must actually fire on the sentence that broke."""
+    import re
+
+    actual = agent_rule_count()
+    line = f"Copy AGENTS.md into your project. It gives the agent its {actual + 1} rules."
+    assert re.search(r"AGENTS\.md|\bagent(s|'s)?\b", line, re.I)
+    hits = [
+        w for w in re.findall(r"\b([a-z]+|\d+) rules\b", line, re.I)
+        if NUMBERS.get(w.lower(), int(w) if w.isdigit() else None) not in (None, actual)
+    ]
+    assert hits, "the pattern no longer matches the sentence it was written for"
+
+
+def test_the_rule_count_check_ignores_an_unrelated_rule_count():
+    """And stays quiet on 'Three rules for IDs', which is a different set."""
+    import re
+
+    assert not re.search(r"AGENTS\.md|\bagent(s|'s)?\b", "### Three rules for IDs", re.I)
+
+
+def test_no_document_states_a_stale_test_count():
+    """The README claimed 133 self-tests while the suite ran 136."""
+    import re
+
+    actual = sum(
+        len(re.findall(r"^def test_", p.read_text(encoding="utf-8"), re.M))
+        for p in (ROOT / "tests").glob("test_*.py")
+    )
+    wrong = []
+    for md in markdown_files():
+        for n in re.findall(r"\b(\d+) (?:self-)?tests\b", md.read_text(encoding="utf-8")):
+            if int(n) != actual:
+                wrong.append(f"{md.relative_to(ROOT)} says {n}, the suite has {actual}")
+    assert not wrong, "; ".join(wrong) + " - state no number rather than a wrong one"

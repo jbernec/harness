@@ -1,6 +1,6 @@
 # harness
 
-Prove an AI coding agent actually did the work, instead of taking its word.
+**Prove work was done, instead of believing someone who says it was.**
 
 Zero dependencies. Python 3.11+. Drop it onto any project.
 
@@ -13,15 +13,20 @@ harness gate mycheck    # 2. the harness decides. not the agent.
 The rule underneath all of it: **whoever does the work does not grade the
 work.** The cheapest way to satisfy a grader you control is to lower it.
 
-Four parts, one assembly — and **none of them is a test**. A test is one kind
-of check:
+### In four words
 
-| Check | Red first | Trace | Gate |
-|---|---|---|---|
-| instrument | calibration | record | verdict |
+| Component | Plainly |
+|---|---|
+| **Check** | the measurement |
+| **Red first** | proof the measurement works |
+| **Trace** | evidence, sealed |
+| **Gate** | go / no-go |
 
-Any three of these is a habit. All four is a harness.
-→ [Concepts](docs/concepts.md)
+> Measure it, prove the measurement works, seal the result, then let
+> something else say go or no-go.
+
+**None of these is a test** — a test is one *kind* of check. Any three of
+them is a habit; all four is a harness. → [Concepts](docs/concepts.md)
 
 ---
 
@@ -132,11 +137,9 @@ proved locally, where the work happened.
 
 ## Handing work to an agent
 
-Copy [`AGENTS.md`](AGENTS.md) into your project. It gives the agent its
-twelve rules. Point `CLAUDE.md` and `.github/copilot-instructions.md` at it
-with one line each — never duplicate the rules, or they drift.
-
-Then the task itself:
+Copy [`AGENTS.md`](AGENTS.md) into your project. Point `CLAUDE.md` and
+`.github/copilot-instructions.md` at it with one line each — never duplicate
+the rules, or they drift. Then the task itself:
 
 ```
 `<command>` currently fails.
@@ -156,7 +159,7 @@ You run `red` and `gate`. The agent only occupies the middle.
 A check verifies that a command exits 0, that output is deterministic, that
 an invariant holds. It **cannot** tell you whether the idea is any good.
 
-For that, mark the requirement `gate: human` and judge it yourself. Then use
+For that, mark the requirement `gate: human` and judge it yourself, then use
 [`reviewer.md`](reviewer.md) — a prompt for a *separate* session to read a
 diff the gate has already passed. Checks prove the code does what the checks
 say; they cannot say the checks were the right ones.
@@ -193,5 +196,4 @@ tests/       self-tests, including replays of the forgery attacks
 examples/    starting checks.toml for aria, selah, ifetch, and pipelines
 reviewer.md  prompt for a separate session to review a passing diff
 ```
-
 Design notes: [concepts](docs/concepts.md#design-notes). MIT.
