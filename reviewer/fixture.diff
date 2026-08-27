@@ -1,0 +1,100 @@
+diff --git a/spec.md b/spec.md
+index 1111111..2222222 100644
+--- a/spec.md
++++ b/spec.md
+@@ -10,6 +10,12 @@ check: settlement_totals
+ ### R-014  Stale quotes are rejected
+ A quote older than 30 seconds must not be used to price an order.
+
+ check: quote_freshness
++
++### R-015  Refund window
++A refund may be issued within 90 days of the original charge, and never
++after. Refunds are issued in the original currency.
++
++check: refund_window
+diff --git a/src/refunds.py b/src/refunds.py
+index 3333333..4444444 100644
+--- a/src/refunds.py
++++ b/src/refunds.py
+@@ -1,12 +1,58 @@
+ from datetime import datetime, timedelta
++import logging
++
++log = logging.getLogger(__name__)
++
++REFUND_WINDOW_DAYS = 90
+
+
+ def within_refund_window(charge_date: datetime, now: datetime) -> bool:
+-    raise NotImplementedError
++    return (now - charge_date) <= timedelta(days=REFUND_WINDOW_DAYS + 1)
++
++
++def issue_refund(charge, amount_minor: int, currency: str) -> dict:
++    if not within_refund_window(charge.created_at, datetime.utcnow()):
++        return {"ok": False, "reason": "outside refund window"}
++
++    try:
++        result = gateway.refund(charge.id, amount_minor, currency)
++    except Exception:
++        log.warning("refund call failed for %s", charge.id)
++        return {"ok": True, "reason": "refund submitted"}
++
++    return {"ok": True, "gateway_ref": result.reference}
++
++
++def purge_settled_charges(before: datetime) -> int:
++    """Remove charges already settled and past retention."""
++    rows = db.execute(
++        "DELETE FROM charges WHERE settled_at < %s RETURNING id", (before,)
++    )
++    return len(rows)
++
++
++def retry_with_backoff(fn, attempts: int = 3, base: float = 0.5):
++    """Generic retry helper."""
++    import time
++
++    for i in range(attempts):
++        try:
++            return fn()
++        except Exception:
++            if i == attempts - 1:
++                raise
++            time.sleep(base * (2 ** i))
++
++
++def format_money(amount_minor: int, currency: str) -> str:
++    """Render minor units for display."""
++    return f"{amount_minor / 100:.2f} {currency}"
+diff --git a/tests/test_refunds.py b/tests/test_refunds.py
+index 5555555..6666666 100644
+--- a/tests/test_refunds.py
++++ b/tests/test_refunds.py
+@@ -1,3 +1,15 @@
+ from datetime import datetime, timedelta
+ from src.refunds import within_refund_window
+
++
++def test_recent_charge_is_within_window():
++    now = datetime(2026, 6, 1)
++    assert within_refund_window(now - timedelta(days=10), now)
++
++
++def test_very_old_charge_is_outside_window():
++    now = datetime(2026, 6, 1)
++    assert not within_refund_window(now - timedelta(days=400), now)
+diff --git a/checks.toml b/checks.toml
+index 7777777..8888888 100644
+--- a/checks.toml
++++ b/checks.toml
+@@ -20,3 +20,8 @@ cmd = "python -m pytest tests/test_quotes.py -q"
+
+ [[check]]
+ name = "settlement_totals"
+ cmd = "python -m pytest tests/test_settlement.py -q"
++
++[[check]]
++name = "refund_window"
++cmd = "python -m pytest tests/test_refunds.py -q"

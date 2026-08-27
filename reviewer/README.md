@@ -91,3 +91,18 @@ One reviewer, generic on purpose. Splitting it into a security reviewer, a
 performance reviewer and a correctness reviewer sounds thorough and produces
 three shallow passes plus three files to keep in sync. Add a second only when
 you can name a finding the first one demonstrably missed twice.
+
+## Does it actually work?
+
+A prompt is a claim about behaviour, and every other claim in this repo has
+something behind it. [`fixture.md`](fixture.md) is a diff with five defects
+planted in it, one per category, and the answers. Run the prompt cold against
+[`fixture.diff`](fixture.diff) and count.
+
+Run it again whenever you change the prompt. **A prompt edit that reads
+better and finds less is the failure mode**, and without a fixture it is
+invisible.
+
+Last recorded run found 5/5, plus a defect that was not planted. That is a
+pass, not proof: it says the prompt works on defects of this shape, not that
+it works on yours.

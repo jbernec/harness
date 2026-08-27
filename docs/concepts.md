@@ -72,7 +72,7 @@ green follow that red, is it still green now. There is no judgement in it,
 which is exactly why it cannot be talked round.
 
 Keep judgement where it belongs - `gate: human` on the requirement, and
-[`reviewer.md`](../reviewer.md) for a second pair of eyes. Just never inside
+[`reviewer/`](../reviewer/) for a second pair of eyes. Just never inside
 the gate.
 
 ### A trace is not a log

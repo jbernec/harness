@@ -160,7 +160,7 @@ A check verifies that a command exits 0, that output is deterministic, that
 an invariant holds. It **cannot** tell you whether the idea is any good.
 
 For that, mark the requirement `gate: human` and judge it yourself, then use
-[`reviewer.md`](reviewer.md) — a prompt for a *separate* session to read a
+[`reviewer/`](reviewer/) — a prompt for a *separate* session to read a
 diff the gate has already passed. Checks prove the code does what the checks
 say; they cannot say the checks were the right ones.
 
@@ -194,6 +194,6 @@ harness/
   cli.py     init | list | select | red | run | gate | guard | verify | version | log | spec
 tests/       self-tests, including replays of the forgery attacks
 examples/    starting checks.toml for aria, selah, ifetch, and pipelines
-reviewer.md  prompt for a separate session to review a passing diff
+reviewer/    the review prompt, plus a fixture that proves it finds things
 ```
 Design notes: [concepts](docs/concepts.md#design-notes). MIT.
