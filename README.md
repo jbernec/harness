@@ -13,7 +13,7 @@ harness gate mycheck    # 2. the harness decides. not the agent.
 The rule underneath all of it: **whoever does the work does not grade the
 work.** The cheapest way to satisfy a grader you control is to lower it.
 
-### In four words
+### The four links in a chain of custody
 
 | Component | Plainly |
 |---|---|
@@ -47,7 +47,7 @@ them at once is how this ends up unused.
 ## Install
 
 ```bash
-pip install "harness @ git+https://github.com/jbernec/harness@v0.7.0"
+pip install "harness @ git+https://github.com/jbernec/harness@v0.8.0"
 ```
 
 Pin the tag, not `main`. `main` moves; a tag is a decision.
@@ -118,10 +118,9 @@ otherwise the easy way to pass is to touch nothing the suite watches.
 
 ### In CI
 
-`harness init` writes a workflow that installs the pinned harness, then runs
-`harness version`, `harness guard` and `harness run --all`. CI proves the
-checks pass from a clean checkout; it does **not** gate, because a fresh
-runner has no trace and so no red to point at.
+`harness init` writes a workflow running `harness version`, `guard` and
+`run --all`. CI proves the checks pass from a clean checkout; it does **not**
+gate — a fresh runner has no trace, so no red to point at.
 → [Standardizing](docs/standardizing.md)
 
 ---
@@ -175,7 +174,7 @@ fixture → [`reviewer/`](reviewer/)
 | [How checks fail](docs/failures.md) | four ways a check quietly stops working |
 | [Retrofitting](docs/retrofit.md) | putting this on a project that already exists |
 | [Standardizing](docs/standardizing.md) | one harness across many projects: pinning, CI, rollout |
-| [Trace and guard](docs/security.md) | why the evidence cannot be forged |
+| [Trace and guard](docs/security.md) | how evidence is sealed, and what this cannot stop |
 
 ---
 
@@ -190,10 +189,11 @@ harness/
   spec.py    Numbered requirements, coverage, drift fingerprints, amendments.
   init.py    Retrofit starter files onto an existing repo. Never overwrites.
   version.py The pin. Same feature release, or refuse.
-  review.py  Assemble the bundle, record the ruling. Judges nothing.
-  cli.py     init list select red run gate guard verify version review log spec
-tests/       self-tests, including replays of the forgery attacks
-checks.toml  + spec.md: the harness under its own verification
+  review.py  Bundle a diff for review, record the ruling. Judges nothing.
+  memory.py  Could a fresh session pick this up from the repo alone?
+  cli.py     init list select red run gate guard verify version review memory log spec
+tests/       self-tests, including replays of every bypass found so far
+checks.toml  + spec.md + decisions.md: the harness under its own verification
 examples/    starting checks.toml for aria, selah, ifetch, and pipelines
 reviewer/    the prompt, plus a fixture proving it finds planted defects
 ```

@@ -14,6 +14,31 @@ change what a green result means.
 
 ---
 
+## 0.8.0 - 2026-08-27
+
+**Added**
+
+- **`harness memory`** - the one question that decides whether your memory is
+  in the right place: could a fresh session with zero context pick up the
+  work by reading the repository? It checks that `spec.md`, `decisions.md`
+  and `AGENTS.md` are present, that decision ids are unique, dated and in
+  order, that `decisions.md` has only gained lines since HEAD, and that
+  `CLAUDE.md` / `copilot-instructions.md` point at `AGENTS.md` rather than
+  repeating it.
+
+  The append-only line is the one that earns its keep. Editing an old
+  decision is not a correction - it deletes the reason you did not take that
+  turn twice, so you take it twice.
+
+- `harness init` now writes a real dated first decision rather than a
+  placeholder, so a fresh scaffold passes `harness memory` immediately. A
+  scaffold that is red on day one for a reason nobody caused is how a check
+  earns a reputation for crying wolf.
+
+- `harness init` adds a `memory` check to new projects.
+
+No gate conditions changed.
+
 ## 0.7.0 - 2026-08-27
 
 **Gate conditions** — evidence recorded before this release is refused for

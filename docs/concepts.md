@@ -175,6 +175,23 @@ it's the reason you don't take it twice.
 with zero context should be able to pick up the work by reading the repo. If
 it can't, the memory is in a chat log and it's already gone.
 
+That test is a command:
+
+```bash
+harness memory
+```
+
+```
+  PASS  decisions    13 decisions, all dated and in order
+  PASS  append_only  decisions.md only gained lines
+  PASS  rules        AGENTS.md is the only copy of the rules
+  PASS  spec         spec.md is present
+```
+
+The append-only line is the one that earns its keep. Editing an old decision
+is not a correction - it deletes the reason you did not take that turn twice,
+so you take it twice.
+
 `decisions.md` is the one people skip. Its trigger is human and it's one
 line: *you made a choice you'd have to explain in six months.* Three lines,
 then move on.

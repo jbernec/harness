@@ -134,6 +134,15 @@ earned.
 status: implemented
 check: docs_are_true
 
+### R-020  A fresh session can pick up the work
+Spec, decisions and agent rules are present, decisions are append-only with
+unique dated ids, and the rules exist in one place with the rest pointing at
+it. If a new session cannot start from the repository, the memory is in a
+chat log and it is already gone.
+
+status: implemented
+check: memory
+
 ### R-015  Whether any of this is worth doing
 Whether the four links are the right four, whether the ceremony costs more
 than the errors it prevents, whether a person would rather ship. No command

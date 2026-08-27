@@ -5,7 +5,7 @@
 
 project = "harness"
 spec = "spec.md"
-harness_version = "0.7.0"
+harness_version = "0.8.0"
 
 # The tests grade this repo, so this repo does not get to edit them. The
 # reviewer fixture is here too: a fixture the author can adjust is a fixture
@@ -65,6 +65,14 @@ cmd = "python -m pytest tests/test_docs.py tests/test_reviewer.py -q"
 expect = 0
 files = ["README.md", "docs/", "reviewer/", "AGENTS.md"]
 description = "links resolve, no stale counts, the fixture matches its answers"
+
+[[check]]
+name = "memory"
+requirement_hash = "R-020:b85511"
+cmd = "python -m harness.cli --cwd . memory"
+expect = 0
+files = ["decisions.md", "AGENTS.md", "spec.md", "CLAUDE.md"]
+description = "a fresh session could pick this up from the repo alone"
 
 [[check]]
 name = "examples_are_usable"

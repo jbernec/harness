@@ -8,6 +8,7 @@
     harness gate <name>          decide whether the work is done
     harness guard                confirm protected paths were not edited
     harness verify               verify the trace chain
+    harness memory               can a fresh session pick this up?
     harness review               bundle the diff + spec for a fresh session
     harness review --record ...  record what a human decided
     harness version              fail if the installed harness is not the pinned one
@@ -32,7 +33,7 @@ from .gate import evaluate
 from .guard import check_protected
 from .init import init
 from .trace import Trace
-from . import review, spec
+from . import memory, review, spec
 from .version import __version__, status as version_status
 
 OK = "PASS"
@@ -289,6 +290,23 @@ def cmd_gate(cfg, args, cwd, trace) -> int:
         print()
         print(f"{OK if ok else NO}  {reason}")
     return 0 if ok else 1
+
+
+def cmd_memory(cfg, args, cwd, trace) -> int:
+    """The test for whether memory is in the right place: could a fresh
+    session with zero context pick up the work by reading the repo? If not,
+    the memory is in a chat log and it is already gone."""
+    result = memory.audit(cwd, cfg.spec, args.base)
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0 if result["ok"] else 1
+
+    for name, part in result["parts"].items():
+        print(f"  {OK if part['ok'] else NO}  {name:<12} {part['reason']}")
+    print()
+    print(f"{OK if result['ok'] else NO}  {result['reason']}")
+    return 0 if result["ok"] else 1
 
 
 def cmd_review(cfg, args, cwd, trace) -> int:
@@ -554,6 +572,7 @@ COMMANDS = {
     "spec": cmd_spec,
     "version": cmd_version,
     "review": cmd_review,
+    "memory": cmd_memory,
 }
 
 
@@ -611,6 +630,9 @@ def main(argv: list[str] | None = None) -> int:
     p_bless = add("bless", spec_sub)
     p_bless.add_argument("id", nargs="?", help="requirement id, or omit for all")
     p_bless.add_argument("--reason", help="required when re-blessing a changed requirement")
+
+    p_memory = add("memory")
+    p_memory.add_argument("--base", default="HEAD", help="git ref to compare against")
 
     p_review = add("review")
     p_review.add_argument("--base", default="main", help="git ref to diff against")

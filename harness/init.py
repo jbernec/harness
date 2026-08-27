@@ -12,6 +12,7 @@ whatever test command the project already has.
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from .spec import bless, parse as parse_spec
@@ -65,6 +66,12 @@ name = "spec_history"
 cmd = "harness spec history"
 expect = 0
 description = "nothing was superseded or removed without saying why"
+
+[[check]]
+name = "memory"
+cmd = "harness memory"
+expect = 0
+description = "a fresh session could pick this up from the repo alone"
 '''
 
 SPEC = '''\
@@ -108,14 +115,13 @@ Three lines: date, what you chose, why. Superseding means adding a new entry
 and marking the old one, never editing it - the wrong turn is usually the
 reason you don't take it twice.
 
-## Active
+## D-001  Adopt the harness
+{today}
 
-## Superseded
+Claims that work is done get checked instead of believed. The cost is a red
+step before each change; the thing it buys is that green means something.
 
----
-
-### D-001  <date>  <decision>
-<Why. Two lines is plenty.>
+Superseding this means writing D-002 saying why, not deleting D-001.
 '''
 
 AGENTS = '''\
@@ -243,7 +249,7 @@ def init(cwd: Path, project: str | None = None, ci: bool = True) -> dict:
             project=name, test_cmd=test_cmd, harness_version=__version__
         ),
         "spec.md": SPEC.format(project=name),
-        "decisions.md": DECISIONS,
+        "decisions.md": DECISIONS.format(today=date.today().isoformat()),
         "AGENTS.md": AGENTS,
     }
     if ci:
