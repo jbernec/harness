@@ -14,6 +14,33 @@ change what a green result means.
 
 ---
 
+## 0.8.1 - 2026-08-27
+
+**Added**
+
+- **`supersedes: D-nnn <reason>`** in `decisions.md`. `spec.md` could retire
+  a requirement; decisions had no equivalent, so the only ways to retire one
+  were to delete it or rewrite it - both of which lose the thing worth
+  keeping. Checked: the target must exist, be older, not be itself, and
+  carry a reason. `harness memory` reports how many are superseded and how
+  many are live.
+- **Duplicate requirements are reported** - identical fingerprints only.
+  Judging whether two differently-worded requirements *mean* the same thing
+  is a judgement, and a guard that guesses produces false positives until
+  someone switches it off. What this catches is the real mechanism: copy a
+  requirement to amend it, forget to delete the original, and whichever one
+  you later edit, the other silently disagrees.
+
+**Fixed**
+
+- The `supersedes:` pattern used `\s*`, which matches newlines, so the
+  reason group ran on and picked up the following paragraph. A supersession
+  with no reason silently borrowed one and recorded the wrong text as its
+  justification. Found by writing the test that was supposed to prove it
+  failed.
+
+No gate conditions changed.
+
 ## 0.8.0 - 2026-08-27
 
 **Added**

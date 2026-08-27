@@ -5,7 +5,7 @@
 
 project = "harness"
 spec = "spec.md"
-harness_version = "0.8.0"
+harness_version = "0.8.1"
 
 # The tests grade this repo, so this repo does not get to edit them. The
 # reviewer fixture is here too: a fixture the author can adjust is a fixture
@@ -68,7 +68,7 @@ description = "links resolve, no stale counts, the fixture matches its answers"
 
 [[check]]
 name = "memory"
-requirement_hash = "R-020:b85511"
+requirement_hash = "R-020:b85511,R-021:97c2ec"
 cmd = "python -m harness.cli --cwd . memory"
 expect = 0
 files = ["decisions.md", "AGENTS.md", "spec.md", "CLAUDE.md"]

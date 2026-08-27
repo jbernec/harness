@@ -111,9 +111,16 @@ DECISIONS = '''\
 Append only. Never rewrite an entry once it is written.
 
 Add one when you make a choice you would have to explain in six months.
-Three lines: date, what you chose, why. Superseding means adding a new entry
-and marking the old one, never editing it - the wrong turn is usually the
-reason you don't take it twice.
+Three lines: date, what you chose, why.
+
+Retiring one means writing a NEW entry that names it:
+
+    ## D-007  Store fingerprints per requirement
+    2026-01-31
+    supersedes: D-003  it assumed one requirement per check
+
+never editing or deleting the old one. The wrong turn is usually the reason
+you don't take it twice - delete it and you take it twice.
 
 ## D-001  Adopt the harness
 {today}

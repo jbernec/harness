@@ -29,6 +29,13 @@ from pathlib import Path
 DECISION = re.compile(r"^#{1,3}\s+(D-\d+)", re.M)
 DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
+# supersedes: D-004  the constraint it assumed no longer holds
+#
+# `[ \t]*` and not `\s*`: \s matches newlines, so the reason group would run
+# on and grab the next paragraph - a supersession with no reason would
+# silently borrow one, and record the wrong text as its justification.
+SUPERSEDES = re.compile(r"^[ \t]*supersedes[ \t]*:[ \t]*(D-\d+)[ \t]*([^\r\n]*)$", re.IGNORECASE | re.M)
+
 # CLAUDE.md and .github/copilot-instructions.md must point at AGENTS.md, not
 # repeat it. Three files with the same rules is three files that drift, and
 # when they disagree nobody knows which one is current.
@@ -44,7 +51,19 @@ def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess | None:
 
 
 def decisions(path: Path) -> dict:
-    """Ids unique, in order, and every entry dated."""
+    """Ids unique, in order, every entry dated, and supersessions resolvable.
+
+    Retiring a decision is the operation people get wrong. Deleting it loses
+    the reason you did not take that turn, and editing it in place loses that
+    you ever changed your mind. So the only way to retire one is to write a
+    new entry that names it:
+
+        ## D-011  Store fingerprints per requirement
+        2026-08-27
+        supersedes: D-006  it assumed one requirement per check
+
+    which leaves both the old reasoning and the moment it stopped applying.
+    """
     if not path.exists():
         return {"ok": False, "count": 0, "reason": f"no {path.name} - decisions live in the repo, not in a chat log"}
 
@@ -67,10 +86,36 @@ def decisions(path: Path) -> dict:
     if undated:
         problems.append(f"undated: {', '.join(undated)}")
 
+    # Supersession: the target must exist, must not be the entry itself, and
+    # must be older. A decision superseding a newer one is a sign the ids
+    # were shuffled, which is the thing append-only exists to prevent.
+    known = set(ids)
+    retired: dict[str, str] = {}
+    for i, entry in enumerate(entries):
+        for target, why in SUPERSEDES.findall(entry):
+            here = ids[i]
+            if target not in known:
+                problems.append(f"{here} supersedes {target}, which does not exist")
+            elif target == here:
+                problems.append(f"{here} supersedes itself")
+            elif int(target.split("-")[1]) > int(here.split("-")[1]):
+                problems.append(f"{here} supersedes {target}, which is newer")
+            elif not why.strip():
+                problems.append(f"{here} supersedes {target} with no reason given")
+            else:
+                retired[target] = here
+
+    live = [i for i in ids if i not in retired]
+    summary = f"{len(ids)} decisions, all dated and in order"
+    if retired:
+        summary += f" ({len(retired)} superseded, {len(live)} live)"
+
     return {
         "ok": not problems,
         "count": len(ids),
-        "reason": "; ".join(problems) if problems else f"{len(ids)} decisions, all dated and in order",
+        "live": live,
+        "superseded": retired,
+        "reason": "; ".join(problems) if problems else summary,
     }
 
 
@@ -111,6 +156,36 @@ def append_only(cwd: Path, path: Path, baseline: str = "HEAD") -> dict:
             ),
         }
     return {"ok": True, "removed": 0, "reason": f"{rel} only gained lines"}
+
+
+def duplicates(reqs: list) -> dict:
+    """Two requirements that say the same thing.
+
+    Only exact duplication is reported - identical fingerprints, meaning the
+    normalised words match. Nothing here tries to judge whether two
+    differently-worded requirements *mean* the same thing, because that is a
+    judgement, and a guard that guesses at judgement produces false positives
+    until someone switches it off.
+
+    What this does catch is the real mechanism: copy a requirement to amend
+    it, forget to delete the original, and now two ids point at the same
+    words. Whichever one you later edit, the other silently disagrees.
+    """
+    by_print: dict[str, list[str]] = {}
+    for r in reqs:
+        if getattr(r, "removed", False):
+            continue
+        by_print.setdefault(r.fingerprint, []).append(r.id)
+
+    dupes = {fp: ids for fp, ids in by_print.items() if len(ids) > 1}
+    if dupes:
+        listed = "; ".join(" = ".join(ids) for ids in dupes.values())
+        return {
+            "ok": False,
+            "groups": list(dupes.values()),
+            "reason": f"requirements with identical text: {listed} - retire one with [REMOVED]",
+        }
+    return {"ok": True, "groups": [], "reason": "no requirement is written twice"}
 
 
 def one_copy_of_the_rules(cwd: Path) -> dict:
@@ -155,11 +230,19 @@ def audit(cwd: Path, spec: str = "spec.md", baseline: str = "HEAD") -> dict:
     }
 
     spec_path = cwd / spec
-    parts["spec"] = (
-        {"ok": True, "reason": f"{spec} is present"}
-        if spec_path.exists()
-        else {"ok": False, "reason": f"no {spec} - a fresh session cannot tell what this is for"}
-    )
+    if spec_path.exists():
+        parts["spec"] = {"ok": True, "reason": f"{spec} is present"}
+        try:
+            from .spec import parse as parse_spec
+
+            parts["duplicates"] = duplicates(parse_spec(spec_path))
+        except (ValueError, OSError) as exc:
+            parts["duplicates"] = {"ok": False, "reason": f"{spec} would not parse: {exc}"}
+    else:
+        parts["spec"] = {
+            "ok": False,
+            "reason": f"no {spec} - a fresh session cannot tell what this is for",
+        }
 
     failed = [k for k, v in parts.items() if not v["ok"]]
     return {

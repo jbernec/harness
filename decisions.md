@@ -122,6 +122,7 @@ gathered under weaker rules.
 
 ## D-012  Fingerprints are per requirement, not per check
 2026-08-27
+supersedes: D-005  it assumed a check settles exactly one requirement
 
 Originally one `requirement_hash` per check. Several requirements
 legitimately share one check, and each blessing erased the last, so
@@ -140,3 +141,25 @@ for it, which is the one thing it exists to stop.
 
 Writing its spec exposed D-012 within minutes. That is the argument for
 dogfooding in one line.
+
+## D-014  Superseding is an entry, not an edit
+2026-08-27
+
+`spec.md` could retire a requirement; `decisions.md` had no equivalent, so
+the only ways to retire a decision were to delete it or rewrite it - both of
+which lose the thing worth keeping.
+
+A `supersedes: D-nnn <reason>` line, checked by `harness memory`: the target
+must exist, be older, not be itself, and carry a reason. Both the original
+reasoning and the moment it stopped applying survive.
+
+## D-015  Only exact duplicates are reported
+2026-08-27
+
+Considered detecting requirements that *mean* the same thing. Rejected: that
+is a judgement, and a guard that guesses at judgement produces false
+positives until someone switches it off - which catches nothing at all.
+
+Identical fingerprints only. That catches the real mechanism: copy a
+requirement to amend it, forget to delete the original, and whichever one you
+later edit, the other silently disagrees.

@@ -143,6 +143,14 @@ chat log and it is already gone.
 status: implemented
 check: memory
 
+### R-021  Retiring a record does not destroy it
+A decision is retired by a new entry naming it, with a reason; the target
+must exist and be older. Nothing is deleted or edited in place. Requirements
+written twice are reported, so the two cannot drift apart.
+
+status: implemented
+check: memory
+
 ### R-015  Whether any of this is worth doing
 Whether the four links are the right four, whether the ceremony costs more
 than the errors it prevents, whether a person would rather ship. No command

@@ -47,7 +47,7 @@ them at once is how this ends up unused.
 ## Install
 
 ```bash
-pip install "harness @ git+https://github.com/jbernec/harness@v0.8.0"
+pip install "harness @ git+https://github.com/jbernec/harness@v0.8.1"
 ```
 
 Pin the tag, not `main`. `main` moves; a tag is a decision.

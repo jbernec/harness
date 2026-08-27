@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 
-__version__ = "0.8.0"
+__version__ = "0.8.1"
 
 VERSION = re.compile(r"^(\d+)\.(\d+)(?:\.(\d+))?")
 
