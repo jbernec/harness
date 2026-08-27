@@ -89,6 +89,10 @@ disagree, no one knows which one is current.
     that makes every green result in this project meaningless, including
     the ones you did not touch.
 
+14. **Do not record a review verdict.** `harness review --record` is the
+    human's. If you were asked to review, report findings and stop - a
+    ruling you enter yourself is the accused writing the verdict.
+
 ## The loop you are part of
 
 ```

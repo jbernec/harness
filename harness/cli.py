@@ -8,6 +8,8 @@
     harness gate <name>          decide whether the work is done
     harness guard                confirm protected paths were not edited
     harness verify               verify the trace chain
+    harness review               bundle the diff + spec for a fresh session
+    harness review --record ...  record what a human decided
     harness version              fail if the installed harness is not the pinned one
     harness log [name]           print recorded evidence
     harness spec list            requirements and how each is settled
@@ -30,7 +32,7 @@ from .gate import evaluate
 from .guard import check_protected
 from .init import init
 from .trace import Trace
-from . import spec
+from . import review, spec
 from .version import __version__, status as version_status
 
 OK = "PASS"
@@ -222,12 +224,32 @@ def cmd_gate(cfg, args, cwd, trace) -> int:
         if not args.skip_guard
         else {"ok": True, "reason": "guard skipped"}
     )
-    ok = verdict.ok and guard["ok"]
+
+    # Opt-in. Requiring a human ruling on every check would make the gate
+    # something people route around, and a gate people route around is worse
+    # than no gate - it launders the habit into a green.
+    sha = review.head_sha(cwd) if cfg.require_review else None
+    seen = review.reviewed(trace, sha) if sha else {"reviewed": True, "verdict": None}
+    review_ok = (not cfg.require_review) or (seen["reviewed"] and seen["verdict"] == "ship")
+
+    ok = verdict.ok and guard["ok"] and review_ok
 
     trace.append(check.name, check.cmd, "gate", ok, 0 if ok else 1, f"{verdict.reason} | guard: {guard['reason']}")
 
+    if not verdict.ok:
+        reason = verdict.reason
+    elif not guard["ok"]:
+        reason = guard["reason"]
+    elif not review_ok:
+        reason = (
+            f"reviewed and held: {seen['note']}" if seen["reviewed"]
+            else "this revision has not been reviewed - run `harness review`"
+        )
+    else:
+        reason = guard["reason"]
+
     if args.json:
-        print(json.dumps({
+        payload = {
             "ok": ok,
             "check": check.name,
             "chain_intact": verdict.chain_intact,
@@ -235,8 +257,11 @@ def cmd_gate(cfg, args, cwd, trace) -> int:
             "green_after_red": verdict.green_after_red,
             "currently_green": verdict.currently_green,
             "protected_ok": guard["ok"],
-            "reason": verdict.reason if not verdict.ok else guard["reason"],
-        }))
+            "reason": reason,
+        }
+        if cfg.require_review:
+            payload["reviewed"] = review_ok
+        print(json.dumps(payload))
     else:
         mark = lambda b: "yes" if b else "no "  # noqa: E731
         print(f"check              {check.name}")
@@ -245,9 +270,76 @@ def cmd_gate(cfg, args, cwd, trace) -> int:
         print(f"  green after red  {mark(verdict.green_after_red)}")
         print(f"  green now        {mark(verdict.currently_green)}")
         print(f"  tests untouched  {mark(guard['ok'])}")
+        if cfg.require_review:
+            print(f"  reviewed         {mark(review_ok)}")
         print()
-        print(f"{OK if ok else NO}  {verdict.reason if not verdict.ok else guard['reason']}")
+        print(f"{OK if ok else NO}  {reason}")
     return 0 if ok else 1
+
+
+def cmd_review(cfg, args, cwd, trace) -> int:
+    """Assemble the bundle, or record what a human decided. Never both, and
+    never a verdict this tool produced itself."""
+    sha = review.head_sha(cwd)
+    if sha is None:
+        print("not a git repository - review needs a revision to key on", file=sys.stderr)
+        return 2
+
+    if args.record:
+        note = args.note or ""
+        if args.record == "hold" and not note:
+            print("a HOLD needs --note: the reason is the whole value of it", file=sys.stderr)
+            return 2
+        trace.append("review", sha, "review", args.record == "ship", 0, note)
+        _emit({"ok": True, "verdict": args.record, "revision": sha[:8], "note": note}, args.json)
+        if not args.json:
+            print(f"{OK}  recorded {args.record.upper()} for {sha[:8]}"
+                  + (f": {note}" if note else ""))
+        return 0
+
+    if args.status:
+        seen = review.reviewed(trace, sha)
+        _emit({**seen, "revision": sha[:8]}, args.json)
+        if not args.json:
+            if seen["reviewed"]:
+                print(f"{OK}  {sha[:8]} reviewed {seen['ts']}: "
+                      f"{seen['verdict'].upper()}" + (f" - {seen['note']}" if seen["note"] else ""))
+            else:
+                print(f"{NO}  {sha[:8]} has not been reviewed")
+        return 0 if seen["reviewed"] else 1
+
+    change = review.diff(cwd, args.base)
+    if not change:
+        print(f"no changes against {args.base} - nothing to review", file=sys.stderr)
+        return 2
+
+    reviewer_md = ""
+    for candidate in (cwd / "reviewer" / "README.md", cwd / "reviewer.md",
+                      Path(__file__).resolve().parents[1] / "reviewer" / "README.md"):
+        if candidate.exists():
+            reviewer_md = candidate.read_text(encoding="utf-8")
+            break
+    if not reviewer_md:
+        print("no reviewer prompt found (reviewer/README.md)", file=sys.stderr)
+        return 2
+
+    spec_path = cwd / cfg.spec
+    text = review.bundle(
+        cwd,
+        review.extract_prompt(reviewer_md),
+        spec_path.read_text(encoding="utf-8") if spec_path.exists() else None,
+        change,
+        args.base,
+    )
+    out = cwd / review.BUNDLE
+    out.write_text(text, encoding="utf-8")
+
+    _emit({"ok": True, "bundle": str(out), "revision": sha[:8]}, args.json)
+    if not args.json:
+        print(f"{OK}  wrote {review.BUNDLE} ({len(text.splitlines())} lines) for {sha[:8]}")
+        print("\nOpen a session with no history of this work and paste that file.")
+        print("Then: harness review --record ship|hold --note \"...\"")
+    return 0
 
 
 def cmd_guard(cfg, args, cwd, trace) -> int:
@@ -441,6 +533,7 @@ COMMANDS = {
     "log": cmd_log,
     "spec": cmd_spec,
     "version": cmd_version,
+    "review": cmd_review,
 }
 
 
@@ -498,6 +591,12 @@ def main(argv: list[str] | None = None) -> int:
     p_bless = add("bless", spec_sub)
     p_bless.add_argument("id", nargs="?", help="requirement id, or omit for all")
     p_bless.add_argument("--reason", help="required when re-blessing a changed requirement")
+
+    p_review = add("review")
+    p_review.add_argument("--base", default="main", help="git ref to diff against")
+    p_review.add_argument("--record", choices=["ship", "hold"], help="record a human verdict")
+    p_review.add_argument("--note", help="why - required for a hold")
+    p_review.add_argument("--status", action="store_true", help="has this revision been reviewed?")
 
     p_init = add("init")
     p_init.add_argument("--project", help="project name (defaults to the directory name)")

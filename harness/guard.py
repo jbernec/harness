@@ -50,6 +50,16 @@ def check_protected(
     if not is_repo(cwd):
         return {"ok": False, "changed": [], "reason": "not a git repository - cannot verify protected paths"}
 
+    # `git diff -- ` with an empty pathspec means EVERY path, so an empty
+    # list would silently invert into the strictest possible guard. Reading
+    # `protected = []` as "protect everything" is the opposite of what it
+    # says, and the person who wrote it would conclude the guard is broken.
+    #
+    # This is not fail-open: an empty list is an explicit statement, not a
+    # failed verification. The default is ["tests/"], so you have to mean it.
+    if not protected:
+        return {"ok": True, "changed": [], "reason": "nothing is protected - `protected` is empty"}
+
     patterns = ignore or []
     changed: set[str] = set()
 

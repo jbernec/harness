@@ -220,6 +220,34 @@ def test_guard_fails_closed_outside_a_repo(tmp_path):
     assert check_protected(tmp_path, ["tests/"])["ok"] is False
 
 
+def test_an_empty_protected_list_protects_nothing(tmp_path):
+    """`git diff -- ` with an empty pathspec means EVERY path, so an empty
+    list used to invert into the strictest possible guard - the opposite of
+    what `protected = []` says. Anyone who wrote it would conclude the guard
+    was broken."""
+    _git_repo(tmp_path)
+    (tmp_path / "tests" / "test_x.py").write_text("def test_x(): pass  # weakened\n")
+    (tmp_path / "brand_new.py").write_text("whatever\n")
+
+    result = check_protected(tmp_path, [])
+    assert result["ok"] is True
+    assert result["changed"] == []
+    assert "nothing is protected" in result["reason"]
+
+
+def test_an_empty_list_is_not_the_same_as_failing_to_verify(tmp_path):
+    """Not fail-open. Outside a repo it still refuses, because that is a
+    failed verification rather than a stated intention."""
+    assert check_protected(tmp_path, [])["ok"] is False
+
+
+def test_a_non_empty_list_still_guards_after_that_change(tmp_path):
+    """Both directions. The fix must not have disarmed the normal case."""
+    _git_repo(tmp_path)
+    (tmp_path / "tests" / "test_x.py").write_text("def test_x(): pass  # weakened\n")
+    assert check_protected(tmp_path, ["tests/"])["ok"] is False
+
+
 def test_guard_ignores_build_artifacts(tmp_path):
     """Running a check writes __pycache__ into tests/. That is not an edit."""
     _git_repo(tmp_path)

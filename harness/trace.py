@@ -88,7 +88,8 @@ class Trace:
         return rows[-1]["mac"] if rows else GENESIS
 
     def append(self, check: str, cmd: str, phase: str, ok: bool, exit_code: int, evidence: str = "") -> dict:
-        """Append one chained event. `phase` is 'red', 'run', or 'gate'."""
+        """Append one chained event. `phase` is 'red', 'run', 'gate',
+        'void', or 'review'."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         row = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),

@@ -29,7 +29,7 @@ done. Fix it in the harness repo, release, bump the pin.
 ## Install
 
 ```bash
-pip install "harness @ git+https://github.com/jbernec/harness@v0.5.0"
+pip install "harness @ git+https://github.com/jbernec/harness@v0.6.0"
 ```
 
 Pin the tag, not `main`. `main` moves; a tag is a decision.

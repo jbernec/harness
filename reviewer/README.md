@@ -11,6 +11,29 @@ Do not run this in the session that wrote the code. An author reviewing their
 own diff finds what they were already worried about, which is the set they
 already handled.
 
+```bash
+harness review                 # bundles the prompt + spec + diff for pasting
+#   ... paste into a session with no history, read the findings ...
+harness review --record ship --note "..."
+harness review --record hold --note "why"
+```
+
+The harness assembles and records. **It does not review.** Handing the diff
+to a model and accepting the answer would move judgement into the machine,
+and judgement is the part that cannot be automated - a reviewer the harness
+invokes and believes is the agent grading itself with extra steps.
+
+So the trace records *that you reviewed and what you decided*, never a
+verdict a model produced.
+
+Set `require_review = true` in `checks.toml` and the gate adds a sixth
+condition. It is off by default: requiring a human ruling on every check
+makes the gate something people route around, and a gate people route around
+is worse than none - it launders the habit into a green.
+
+A ruling is keyed to the commit, so it cannot carry over. Review once, push
+three more commits, and the gate asks again.
+
 ---
 
 ## The prompt
@@ -57,14 +80,16 @@ End with one line: SHIP or HOLD, and the single reason.
 
 ## Using it
 
-```
-git diff main...HEAD > /tmp/review.diff
+```bash
+harness review --base main
 ```
 
-Open a new session. Paste the prompt, the diff, and `spec.md`. Nothing else -
-not the build log, not the reasoning that produced the change. Context that
-explains why the author did something is exactly the context that stops a
-reviewer noticing they should not have.
+Writes `review-bundle.md`: the prompt, your `spec.md`, and the diff. Open a
+new session and paste it. Nothing else - not the build log, not the reasoning
+that produced the change. Context that explains why the author did something
+is exactly the context that stops a reviewer noticing they should not have.
+
+The bundle is gitignored. Regenerate it; do not commit it.
 
 ## What to do with the output
 
@@ -83,9 +108,13 @@ the date you were warned.
 
 ## What this is not
 
-It is not a gate. It has no exit code and it cannot be trusted to be
-repeatable - ask twice, get two answers. Keep it where judgement belongs and
-out of the place where proof belongs.
+It is not a check. It has no exit code of its own and it cannot be trusted to
+be repeatable - ask twice, get two answers. What the gate reads is **your**
+ruling, recorded, not the model's.
+
+`require_review` is an extra condition, never a substitute for the evidence.
+A human saying "looks fine" does not stand in for red-then-green, and the
+gate will still refuse without it.
 
 One reviewer, generic on purpose. Splitting it into a security reviewer, a
 performance reviewer and a correctness reviewer sounds thorough and produces

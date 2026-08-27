@@ -169,6 +169,7 @@ class Config:
     guard_ignore: list[str]
     spec: str
     harness_version: str = ""
+    require_review: bool = False
 
 
 def load_config(path: Path) -> Config:
@@ -214,6 +215,7 @@ def load_config(path: Path) -> Config:
         guard_ignore=list(data.get("guard_ignore", DEFAULT_GUARD_IGNORE)),
         spec=data.get("spec", "spec.md"),
         harness_version=str(data.get("harness_version", "")),
+        require_review=bool(data.get("require_review", False)),
     )
 
 

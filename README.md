@@ -37,17 +37,17 @@ them is a habit; all four is a harness. → [Concepts](docs/concepts.md)
 | Agent says "done" and it isn't | red first + gate | below |
 | Agent dropped a step in a procedure | a runner | [runners](docs/runners.md) |
 | Spec says one thing, code does another | numbered requirements | [requirements](docs/requirements.md) |
+| Change passes, but nobody read it | `harness review` | [reviewer/](reviewer/) |
 
-These are independent. Runners need no requirement IDs; IDs need no runners.
-**Take only what your problem needs.** Adopting all three at once is how this
-ends up unused.
+These are independent. **Take only what your problem needs.** Adopting all of
+them at once is how this ends up unused.
 
 ---
 
 ## Install
 
 ```bash
-pip install "harness @ git+https://github.com/jbernec/harness@v0.5.0"
+pip install "harness @ git+https://github.com/jbernec/harness@v0.6.0"
 ```
 
 Pin the tag, not `main`. `main` moves; a tag is a decision.
@@ -98,6 +98,7 @@ check              position_limit
   green after red  yes     <- and it passed afterwards, in that order
   green now        yes     <- and it still passes right now
   tests untouched  yes     <- the agent did not edit its own grader
+  reviewed         yes     <- only with require_review = true
 
 PASS
 ```
@@ -106,14 +107,10 @@ Any `no` is a refusal. No partial credit, no override flag.
 
 ### Iterating on a big suite
 
-Scope a check to the paths it is about, then shortlist:
+Scope a check to the paths it is about, then shortlist with `harness select`:
 
 ```toml
 files = ["src/api/", "schema/*.json"]
-```
-
-```bash
-harness select                # which checks concern what I changed?
 ```
 
 A check with no `files` always runs, and **the gate never selects** —
@@ -121,17 +118,11 @@ otherwise the easy way to pass is to touch nothing the suite watches.
 
 ### In CI
 
-`harness init` writes a workflow that installs the pinned harness and runs:
-
-```bash
-harness version      # is this the harness this project was gated with?
-harness guard        # were protected paths touched?
-harness run --all    # every check, no stopping at the first failure
-```
-
-CI proves the checks pass from a clean checkout. It does **not** gate — a
-fresh runner has no trace, so it has no red to point at. Red-then-green is
-proved locally, where the work happened.
+`harness init` writes a workflow that installs the pinned harness, then runs
+`harness version`, `harness guard` and `harness run --all`. CI proves the
+checks pass from a clean checkout; it does **not** gate, because a fresh
+runner has no trace and so no red to point at.
+→ [Standardizing](docs/standardizing.md)
 
 ---
 
@@ -159,10 +150,18 @@ You run `red` and `gate`. The agent only occupies the middle.
 A check verifies that a command exits 0, that output is deterministic, that
 an invariant holds. It **cannot** tell you whether the idea is any good.
 
-For that, mark the requirement `gate: human` and judge it yourself, then use
-[`reviewer/`](reviewer/) — a prompt for a *separate* session to read a
-diff the gate has already passed. Checks prove the code does what the checks
-say; they cannot say the checks were the right ones.
+For that, mark the requirement `gate: human` and judge it yourself:
+
+```bash
+harness review                              # bundles prompt + spec + diff
+harness review --record ship --note "..."   # your ruling, traced
+```
+
+Paste the bundle into a session with no history of the work. The harness
+assembles and records; **it does not review** — a reviewer it invokes and
+believes is the agent grading itself with extra steps. Set
+`require_review = true` for a sixth gate condition. Scored 5/5 on a planted
+fixture → [`reviewer/`](reviewer/)
 
 ---
 
@@ -191,9 +190,10 @@ harness/
   spec.py    Numbered requirements, coverage, drift fingerprints, amendments.
   init.py    Retrofit starter files onto an existing repo. Never overwrites.
   version.py The pin. Same feature release, or refuse.
-  cli.py     init | list | select | red | run | gate | guard | verify | version | log | spec
+  review.py  Assemble the bundle, record the ruling. Judges nothing.
+  cli.py     init list select red run gate guard verify version review log spec
 tests/       self-tests, including replays of the forgery attacks
 examples/    starting checks.toml for aria, selah, ifetch, and pipelines
-reviewer/    the review prompt, plus a fixture that proves it finds things
+reviewer/    the prompt, plus a fixture proving it finds planted defects
 ```
 Design notes: [concepts](docs/concepts.md#design-notes). MIT.
