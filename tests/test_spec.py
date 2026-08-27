@@ -14,7 +14,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from harness.check import load_config  # noqa: E402
-from harness.spec import amend, bless, coverage, history, parse, sync  # noqa: E402
+from harness.spec import (amend, bless, coverage, format_recorded, history,  # noqa: E402
+                          parse, parse_recorded, sync)
 
 SPEC = """\
 # ARIA
@@ -351,3 +352,116 @@ def test_amend_leaves_every_other_requirement_untouched(tmp_path):
     before = {r.id: r.fingerprint for r in parse(p)}
     amend(p, "R-002", "limit raised to 20%")
     assert {r.id: r.fingerprint for r in parse(p)} == before
+
+
+# --- one check settling several requirements -------------------------------
+#
+# The original design recorded one hash per check, so blessing R-002 erased
+# what was recorded for R-001 on the same check and `spec sync` became
+# permanently red with no way to satisfy it. A check that can never go green
+# gets deleted, which is worse than not having written it.
+
+SHARED = """\
+# P
+
+### R-001  First
+One thing.
+
+check: suite
+
+### R-002  Second
+Another thing.
+
+check: suite
+
+### R-003  Third
+A third thing.
+
+check: suite
+"""
+
+
+class FakeCheck:
+    def __init__(self, requirement_hash=""):
+        self.requirement_hash = requirement_hash
+
+
+def shared_config(tmp_path):
+    p = tmp_path / "checks.toml"
+    p.write_text('project = "p"\n[[check]]\nname = "suite"\ncmd = "true"\n', encoding="utf-8")
+    return p
+
+
+def test_recorded_parses_the_bare_form():
+    assert parse_recorded("a1b2c3") == {"": "a1b2c3"}
+
+
+def test_recorded_parses_the_named_form():
+    assert parse_recorded("R-001:aaa,R-002:bbb") == {"R-001": "aaa", "R-002": "bbb"}
+
+
+def test_recorded_parses_nothing_as_empty():
+    assert parse_recorded("") == {} and parse_recorded(None) == {}
+
+
+def test_recorded_round_trips():
+    pairs = {"R-002": "bbb", "R-001": "aaa"}
+    assert parse_recorded(format_recorded(pairs)) == pairs
+
+
+def test_blessing_one_requirement_does_not_erase_another(tmp_path):
+    cfg = shared_config(tmp_path)
+    reqs = parse(write_spec(tmp_path, SHARED))
+    for r in reqs:
+        bless(cfg, "suite", r.fingerprint, r.id)
+
+    recorded = parse_recorded(
+        [ln for ln in cfg.read_text(encoding="utf-8").splitlines()
+         if "requirement_hash" in ln][0].split("=", 1)[1].strip().strip('"')
+    )
+    assert set(recorded) == {"R-001", "R-002", "R-003"}
+
+
+def test_sync_passes_when_every_shared_requirement_is_blessed(tmp_path):
+    reqs = parse(write_spec(tmp_path, SHARED))
+    recorded = format_recorded({r.id: r.fingerprint for r in reqs})
+    assert sync(reqs, {"suite": FakeCheck(recorded)})["ok"]
+
+
+def test_sync_names_only_the_requirement_that_changed(tmp_path):
+    """Precision matters here. 'something on this check moved' is the kind of
+    message people stop reading."""
+    reqs = parse(write_spec(tmp_path, SHARED))
+    recorded = format_recorded({r.id: r.fingerprint for r in reqs})
+
+    edited = parse(write_spec(tmp_path, SHARED.replace("Another thing.", "A different thing.")))
+    result = sync(edited, {"suite": FakeCheck(recorded)})
+
+    assert not result["ok"]
+    assert "R-002" in result["reason"]
+    assert "R-001" not in result["reason"] and "R-003" not in result["reason"]
+
+
+def test_a_requirement_added_to_a_shared_check_reads_as_unreviewed(tmp_path):
+    """Not as drifted. Nobody has looked at it yet, which is a different
+    thing from having looked and the words moving since."""
+    reqs = parse(write_spec(tmp_path, SHARED))
+    partial = format_recorded({r.id: r.fingerprint for r in reqs if r.id != "R-003"})
+    result = sync(reqs, {"suite": FakeCheck(partial)})
+    assert not result["ok"]
+    assert "R-003" in result["reason"] and "never reviewed" in result["reason"]
+
+
+def test_the_old_bare_form_still_works_for_a_single_requirement(tmp_path):
+    """Projects blessed before this change must not all go red at once."""
+    reqs = parse(write_spec(tmp_path))
+    r = next(x for x in reqs if x.id == "R-001")
+    assert sync([r], {"universe": FakeCheck(r.fingerprint)})["ok"]
+
+
+def test_the_bare_form_does_not_vouch_for_a_second_requirement(tmp_path):
+    """An unnamed hash can only honestly speak for one requirement."""
+    reqs = parse(write_spec(tmp_path, SHARED))
+    result = sync(reqs, {"suite": FakeCheck(reqs[0].fingerprint)})
+    assert not result["ok"]
+    assert "R-002" in result["reason"] and "R-003" in result["reason"]

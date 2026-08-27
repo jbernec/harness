@@ -47,7 +47,7 @@ them at once is how this ends up unused.
 ## Install
 
 ```bash
-pip install "harness @ git+https://github.com/jbernec/harness@v0.6.0"
+pip install "harness @ git+https://github.com/jbernec/harness@v0.6.1"
 ```
 
 Pin the tag, not `main`. `main` moves; a tag is a decision.
@@ -193,6 +193,7 @@ harness/
   review.py  Assemble the bundle, record the ruling. Judges nothing.
   cli.py     init list select red run gate guard verify version review log spec
 tests/       self-tests, including replays of the forgery attacks
+checks.toml  + spec.md: the harness under its own verification
 examples/    starting checks.toml for aria, selah, ifetch, and pipelines
 reviewer/    the prompt, plus a fixture proving it finds planted defects
 ```

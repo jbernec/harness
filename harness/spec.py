@@ -190,6 +190,36 @@ def coverage(reqs: list[Requirement], check_names: set[str]) -> dict:
     }
 
 
+def parse_recorded(recorded: str) -> dict[str, str]:
+    """Read what a check has blessed.
+
+    Two shapes, because one check may settle several requirements:
+
+        "a1b2c3"                    a single unnamed fingerprint (older form)
+        "R-001:a1b2c3,R-002:d4e5f6" one per requirement
+
+    The bare form used to be the only one, and it silently lost every
+    requirement but the last when a check settled more than one - which made
+    `spec sync` permanently red and impossible to satisfy. A check that can
+    never go green gets deleted, so this was worse than having no check.
+    """
+    recorded = (recorded or "").strip()
+    if not recorded:
+        return {}
+    if ":" not in recorded:
+        return {"": recorded}
+    out = {}
+    for part in recorded.split(","):
+        if ":" in part:
+            req_id, _, h = part.partition(":")
+            out[req_id.strip()] = h.strip()
+    return out
+
+
+def format_recorded(pairs: dict[str, str]) -> str:
+    return ",".join(f"{k}:{v}" for k, v in sorted(pairs.items()))
+
+
 def sync(reqs: list[Requirement], checks: dict) -> dict:
     """Compare each requirement's fingerprint against the one its check recorded.
 
@@ -206,11 +236,18 @@ def sync(reqs: list[Requirement], checks: dict) -> dict:
         check = checks.get(r.check)
         if check is None:
             continue
-        recorded = getattr(check, "requirement_hash", "")
+        recorded = parse_recorded(getattr(check, "requirement_hash", ""))
         if not recorded:
             unblessed.append(f"{req_id} ({r.check})")
-        elif recorded != r.fingerprint:
-            drifted.append(f"{req_id}: spec is {r.fingerprint}, check recorded {recorded}")
+            continue
+
+        # The unnamed form only speaks for a check settling one requirement.
+        # If more point at it, the others have never actually been blessed.
+        mine = recorded.get(req_id, recorded.get("") if len(recorded) == 1 else None)
+        if mine is None:
+            unblessed.append(f"{req_id} ({r.check})")
+        elif mine != r.fingerprint:
+            drifted.append(f"{req_id}: spec is {r.fingerprint}, check recorded {mine}")
 
     problems = []
     if drifted:
@@ -288,15 +325,21 @@ def amend(spec_path: Path, req_id: str, reason: str, on: str | None = None) -> b
     return False
 
 
-def bless(config_path: Path, check_name: str, fingerprint: str) -> bool:
+def bless(config_path: Path, check_name: str, fingerprint: str, req_id: str = "") -> bool:
     """Record a fingerprint against a check in checks.toml.
 
-    Deliberately a line edit rather than a rewrite: your comments, ordering and
-    formatting survive untouched. Returns False if the check isn't found.
+    Merges rather than overwrites when a `req_id` is given, so blessing
+    R-002 does not silently erase what was recorded for R-001 on the same
+    check. Overwriting was the original behaviour and it made `spec sync`
+    unsatisfiable for any check settling more than one requirement.
+
+    Deliberately a line edit rather than a rewrite: your comments, ordering
+    and formatting survive untouched. Returns False if the check isn't found.
     """
     lines = config_path.read_text(encoding="utf-8").splitlines()
     name_pat = re.compile(rf"^\s*name\s*=\s*[\"']{re.escape(check_name)}[\"']\s*$")
-    hash_pat = re.compile(r"^(\s*)requirement_hash\s*=.*$")
+    hash_pat = re.compile(r"^(\s*)requirement_hash\s*=\s*[\"'](.*)[\"']\s*$")
+    any_hash = re.compile(r"^(\s*)requirement_hash\s*=.*$")
 
     start = next((i for i, ln in enumerate(lines) if name_pat.match(ln)), None)
     if start is None:
@@ -309,12 +352,22 @@ def bless(config_path: Path, check_name: str, fingerprint: str) -> bool:
             break
 
     for i in range(start, end):
-        if hash_pat.match(lines[i]):
-            indent = hash_pat.match(lines[i]).group(1)
-            lines[i] = f'{indent}requirement_hash = "{fingerprint}"'
-            break
+        m = any_hash.match(lines[i])
+        if not m:
+            continue
+        indent = m.group(1)
+        if req_id:
+            existing = parse_recorded(hash_pat.match(lines[i]).group(2) if hash_pat.match(lines[i]) else "")
+            existing.pop("", None)      # drop the old unnamed form
+            existing[req_id] = fingerprint
+            value = format_recorded(existing)
+        else:
+            value = fingerprint
+        lines[i] = f'{indent}requirement_hash = "{value}"'
+        break
     else:
-        lines.insert(start + 1, f'requirement_hash = "{fingerprint}"')
+        value = f"{req_id}:{fingerprint}" if req_id else fingerprint
+        lines.insert(start + 1, f'requirement_hash = "{value}"')
 
     config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return True

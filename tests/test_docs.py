@@ -19,11 +19,40 @@ SCHEMES = ("http://", "https://", "mailto:", "#")
 
 
 def markdown_files() -> list[Path]:
+    """Markdown that is actually committed.
+
+    Generated artifacts land in the tree too - `harness review` writes a
+    bundle containing a whole diff, docs and all - and scanning those makes
+    every docs check fail for reasons nobody caused. A guard that fires on
+    your own scratch output is one you learn to ignore.
+    """
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "*.md"], cwd=ROOT,
+            capture_output=True, text=True, timeout=60,
+        )
+        if proc.returncode == 0:
+            tracked = [ROOT / p for p in proc.stdout.split("\n") if p.strip()]
+            if tracked:
+                return [p for p in tracked if p.exists()]
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    # No git: fall back to the filesystem rather than checking nothing.
     return [p for p in ROOT.rglob("*.md") if ".git" not in p.parts]
 
 
 def test_markdown_files_exist():
     assert markdown_files(), "no markdown found - the test is pointing at nothing"
+
+
+def test_generated_artifacts_are_not_scanned():
+    """`harness review` writes a bundle containing every doc in the repo. If
+    the docs checks scanned it, they would flag the copy rather than the
+    original - and stay red until you deleted a file you are meant to
+    regenerate freely."""
+    assert not any(p.name == "review-bundle.md" for p in markdown_files())
 
 
 def test_every_relative_link_resolves():

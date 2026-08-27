@@ -269,7 +269,7 @@ def init(cwd: Path, project: str | None = None, ci: bool = True) -> dict:
     if {"checks.toml", "spec.md"} <= set(written):
         for req in parse_spec(cwd / "spec.md"):
             if req.check:
-                bless(cwd / "checks.toml", req.check, req.fingerprint)
+                bless(cwd / "checks.toml", req.check, req.fingerprint, req.id)
 
     return {
         "ok": True,

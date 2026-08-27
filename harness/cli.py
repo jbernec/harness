@@ -229,24 +229,38 @@ def cmd_gate(cfg, args, cwd, trace) -> int:
     # something people route around, and a gate people route around is worse
     # than no gate - it launders the habit into a green.
     sha = review.head_sha(cwd) if cfg.require_review else None
-    seen = review.reviewed(trace, sha) if sha else {"reviewed": True, "verdict": None}
-    review_ok = (not cfg.require_review) or (seen["reviewed"] and seen["verdict"] == "ship")
+    if not cfg.require_review:
+        seen, review_ok = {"reviewed": True, "verdict": None, "note": ""}, True
+    elif sha is None:
+        # Cannot identify the revision, so cannot know what was ruled on.
+        # Fails closed, same as the guard: this is a failed verification, not
+        # a stated intention.
+        seen, review_ok = {"reviewed": False, "verdict": None, "note": "", "unknown": True}, False
+    else:
+        seen = review.reviewed(trace, sha)
+        review_ok = seen["reviewed"] and seen["verdict"] == "ship"
 
     ok = verdict.ok and guard["ok"] and review_ok
 
-    trace.append(check.name, check.cmd, "gate", ok, 0 if ok else 1, f"{verdict.reason} | guard: {guard['reason']}")
-
+    # Build the reason BEFORE recording it. Computing one string for the trace
+    # and a different one for the human means the evidence disagrees with what
+    # you were told - and the trace is the part that outlives the terminal.
     if not verdict.ok:
         reason = verdict.reason
     elif not guard["ok"]:
         reason = guard["reason"]
     elif not review_ok:
-        reason = (
-            f"reviewed and held: {seen['note']}" if seen["reviewed"]
-            else "this revision has not been reviewed - run `harness review`"
-        )
+        if seen.get("unknown"):
+            reason = "require_review is on but this is not a git repository - no revision to rule on"
+        elif seen["reviewed"]:
+            reason = f"reviewed and held: {seen['note']}"
+        else:
+            reason = "this revision has not been reviewed - run `harness review`"
     else:
         reason = guard["reason"]
+
+    trace.append(check.name, check.cmd, "gate", ok, 0 if ok else 1,
+                 f"{reason} | guard: {guard['reason']}")
 
     if args.json:
         payload = {
@@ -323,10 +337,16 @@ def cmd_review(cfg, args, cwd, trace) -> int:
         print("no reviewer prompt found (reviewer/README.md)", file=sys.stderr)
         return 2
 
+    try:
+        prompt = review.extract_prompt(reviewer_md)
+    except ValueError as exc:
+        print(f"reviewer prompt is malformed: {exc}", file=sys.stderr)
+        return 2
+
     spec_path = cwd / cfg.spec
     text = review.bundle(
         cwd,
-        review.extract_prompt(reviewer_md),
+        prompt,
         spec_path.read_text(encoding="utf-8") if spec_path.exists() else None,
         change,
         args.base,
@@ -465,7 +485,7 @@ def cmd_spec(cfg, args, cwd, trace) -> int:
                 return 2
 
         for r in targets:
-            recorded = getattr(cfg.checks.get(r.check), "requirement_hash", "")
+            recorded = spec.parse_recorded(getattr(cfg.checks.get(r.check), "requirement_hash", "")).get(r.id, "")
             # Re-blessing after drift is the moment the change becomes
             # official. That is the only moment you still remember why.
             if recorded and recorded != r.fingerprint and not args.reason:
@@ -478,7 +498,7 @@ def cmd_spec(cfg, args, cwd, trace) -> int:
                 )
                 return 1
 
-            if not spec.bless(cfg_path, r.check, r.fingerprint):
+            if not spec.bless(cfg_path, r.check, r.fingerprint, r.id):
                 print(f"skipped  {r.id:<14} check '{r.check}' not found in {args.config}", file=sys.stderr)
                 continue
             note = ""

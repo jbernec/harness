@@ -71,13 +71,24 @@ def bundle(cwd: Path, prompt: str, spec: str | None, change: str, base: str) -> 
 
 def extract_prompt(reviewer_md: str) -> str:
     """The fenced block under '## The prompt', so the bundle carries the
-    prompt itself rather than the prose explaining it."""
+    prompt itself rather than the prose explaining it.
+
+    Raises rather than falling back to the whole file. A bundle that quietly
+    carries an essay about reviewing instead of the instructions would still
+    look fine and review worse - the failure mode is invisible at exactly the
+    moment you stop checking.
+    """
     marker = "## The prompt"
     if marker in reviewer_md:
         after = reviewer_md.split(marker, 1)[1]
         if "```" in after:
-            return after.split("```", 2)[1].strip()
-    return reviewer_md.strip()
+            block = after.split("```", 2)[1].strip()
+            if block:
+                return block
+    raise ValueError(
+        "no fenced prompt found under '## The prompt' - the bundle would "
+        "carry the surrounding prose instead of the instructions"
+    )
 
 
 def reviewed(trace, base_sha: str) -> dict:

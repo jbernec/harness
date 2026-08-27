@@ -1,0 +1,67 @@
+# The harness, verified by itself.
+#
+# A verification tool that is not under its own verification is asking you to
+# take its word for it, which is the one thing it exists to stop.
+
+project = "harness"
+spec = "spec.md"
+harness_version = "0.6.1"
+
+# The tests grade this repo, so this repo does not get to edit them. The
+# reviewer fixture is here too: a fixture the author can adjust is a fixture
+# that will be adjusted until it passes.
+protected = ["tests/", "spec.md", "reviewer/fixture.diff", "reviewer/fixture.md"]
+
+
+[[check]]
+name = "harness_version"
+requirement_hash = "R-011:258b3a"
+cmd = "python -m harness.cli --cwd . version"
+expect = 0
+description = "the installed harness is the one this project was gated with"
+
+[[check]]
+name = "unit"
+requirement_hash = "R-001:109415,R-002:b8934d,R-003:0cb8cf,R-012:64c603"
+cmd = "python -m pytest tests -q"
+expect = 0
+description = "the whole suite, including the forgery replays"
+
+[[check]]
+name = "spec_coverage"
+requirement_hash = "R-009:77b19b"
+cmd = "python -m harness.cli --cwd . spec coverage"
+expect = 0
+description = "every requirement has a check, or is marked gate: human"
+
+[[check]]
+name = "spec_sync"
+requirement_hash = "R-008:7d7a86"
+cmd = "python -m harness.cli --cwd . spec sync"
+expect = 0
+description = "no requirement changed without its check being reviewed"
+
+[[check]]
+name = "spec_history"
+requirement_hash = "R-010:a468eb"
+cmd = "python -m harness.cli --cwd . spec history"
+expect = 0
+description = "nothing was superseded or removed without saying why"
+
+# Scoped checks, so `harness select` has something real to shortlist here.
+
+[[check]]
+name = "security"
+requirement_hash = "R-004:f0a95f,R-005:358422,R-006:2e05aa,R-007:5ebe18"
+cmd = "python -m pytest tests/test_harness.py -q -k \"forge or tamper or chain or key or guard\""
+expect = 0
+files = ["harness/trace.py", "harness/guard.py", "harness/gate.py"]
+description = "the attacks that must keep failing"
+
+[[check]]
+name = "docs_are_true"
+requirement_hash = "R-013:154da4,R-014:d5dd49"
+cmd = "python -m pytest tests/test_docs.py tests/test_reviewer.py -q"
+expect = 0
+files = ["README.md", "docs/", "reviewer/", "AGENTS.md"]
+description = "links resolve, no stale counts, the fixture matches its answers"

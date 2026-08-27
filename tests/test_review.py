@@ -112,8 +112,90 @@ def test_the_prompt_is_extracted_without_its_prose():
     assert extract_prompt(md) == "DO THE THING"
 
 
-def test_prompt_extraction_falls_back_to_the_whole_file():
-    assert "everything" in extract_prompt("no fenced block here, just everything")
+def test_prompt_extraction_refuses_a_file_with_no_fenced_block():
+    """It used to fall back to the whole file, so a bundle would quietly
+    carry an essay about reviewing instead of the instructions - looking
+    fine and reviewing worse. Raised by a cold review of this very diff."""
+    import pytest
+    with pytest.raises(ValueError, match="no fenced prompt"):
+        extract_prompt("no fenced block here, just prose")
+
+
+def test_prompt_extraction_refuses_an_empty_block():
+    import pytest
+    with pytest.raises(ValueError):
+        extract_prompt("## The prompt\n\n```\n\n```\n")
+
+
+def test_review_refuses_to_write_a_bundle_from_a_malformed_prompt(tmp_path):
+    r = repo(tmp_path)
+    git(r, "checkout", "-qb", "work")
+    a_change(r)
+    (r / "reviewer").mkdir()
+    (r / "reviewer" / "README.md").write_text("# Reviewer\n\nJust prose.\n", encoding="utf-8")
+
+    result = cli(r, "review", "--base", "main")
+    assert result.returncode == 2
+    assert "malformed" in result.stderr
+    assert not (r / BUNDLE).exists(), "a bad bundle must not be left behind"
+
+
+# --- the trace must agree with what you were told --------------------------
+
+
+def last_gate_evidence(cwd) -> str:
+    """Read the reason recorded in the trace, not the one printed."""
+    import json as _json
+    home = cwd.parent / f"{cwd.name}-home"
+    rows = [
+        _json.loads(ln)
+        for ln in (home / "r" / "trace.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    return next(r["evidence"] for r in reversed(rows) if r["phase"] == "gate")
+
+
+def test_the_trace_records_the_same_reason_the_user_was_given(tmp_path):
+    """The gate built one string for the trace and a different one for the
+    terminal, so the evidence disagreed with what you were told - and the
+    trace is the part that outlives the terminal. Found by a cold review."""
+    r = repo(tmp_path, require_review=True)
+    earn_green(r)
+    result = cli(r, "gate", "unit")
+
+    printed = result.stdout.strip().splitlines()[-1].replace("FAIL  ", "")
+    assert "has not been reviewed" in printed
+    assert "has not been reviewed" in last_gate_evidence(r)
+
+
+def test_the_trace_records_a_hold_reason(tmp_path):
+    r = repo(tmp_path, require_review=True)
+    earn_green(r)
+    cli(r, "review", "--record", "hold", "--note", "scope creep")
+    cli(r, "gate", "unit")
+    assert "scope creep" in last_gate_evidence(r)
+
+
+def test_require_review_fails_closed_outside_a_repo(tmp_path):
+    """It used to report 'reviewed and held: ' with an empty note, which is
+    both wrong and confusing. Same rule as the guard: cannot verify, refuse -
+    but say the true reason. Found by a cold review of this diff."""
+    d = tmp_path / "loose"
+    d.mkdir()
+    (d / "checks.toml").write_text(
+        'project = "r"\nprotected = []\nrequire_review = true\n'
+        '[[check]]\nname = "unit"\n'
+        'cmd = "python -c \\"import pathlib,sys; sys.exit(0 if pathlib.Path(\'ok.txt\').exists() else 1)\\""\n',
+        encoding="utf-8",
+    )
+    assert cli(d, "red", "unit").returncode == 0
+    (d / "ok.txt").write_text("", encoding="utf-8")
+    assert cli(d, "run", "unit").returncode == 0
+
+    result = cli(d, "gate", "unit")
+    assert result.returncode == 1
+    assert "not a git repository" in result.stdout
+    assert "held" not in result.stdout
 
 
 # --- recording a verdict ---------------------------------------------------
@@ -121,9 +203,7 @@ def test_prompt_extraction_falls_back_to_the_whole_file():
 
 def test_recording_ship_is_traced(tmp_path):
     r = repo(tmp_path)
-    result = cli(r, "review", "--record", "ship", "--note", "read it all")
-    assert result.returncode == 0
-
+    assert cli(r, "review", "--record", "ship", "--note", "read it all").returncode == 0
     payload = json.loads(cli(r, "review", "--status", "--json").stdout)
     assert payload["reviewed"] and payload["verdict"] == "ship"
 
@@ -140,8 +220,7 @@ def test_a_hold_with_a_reason_is_recorded(tmp_path):
     r = repo(tmp_path)
     assert cli(r, "review", "--record", "hold", "--note", "scope is too wide").returncode == 0
     payload = json.loads(cli(r, "review", "--status", "--json").stdout)
-    assert payload["verdict"] == "hold"
-    assert "scope is too wide" in payload["note"]
+    assert payload["verdict"] == "hold" and "scope is too wide" in payload["note"]
 
 
 def test_status_reports_unreviewed_before_any_review(tmp_path):
@@ -157,13 +236,12 @@ def test_a_review_does_not_carry_over_to_a_later_commit(tmp_path):
     r = repo(tmp_path)
     cli(r, "review", "--record", "ship", "--note", "fine")
     assert cli(r, "review", "--status").returncode == 0
-
     a_change(r)
     assert cli(r, "review", "--status").returncode == 1
 
 
 def test_the_latest_verdict_wins(tmp_path):
-    """Held, fixed nothing, ruled again - the second ruling is the answer."""
+    """Held, discussed, ruled again - the second ruling is the answer."""
     r = repo(tmp_path)
     cli(r, "review", "--record", "hold", "--note", "wait")
     cli(r, "review", "--record", "ship", "--note", "discussed, fine")
@@ -184,11 +262,8 @@ def test_require_review_is_read_from_the_config(tmp_path):
 
 
 def test_the_gate_shows_the_review_row_only_when_required(tmp_path):
-    plain = cli(repo(tmp_path / "off"), "gate", "unit")
-    assert "reviewed" not in plain.stdout
-
-    strict = cli(repo(tmp_path / "on", require_review=True), "gate", "unit")
-    assert "reviewed" in strict.stdout
+    assert "reviewed" not in cli(repo(tmp_path / "off"), "gate", "unit").stdout
+    assert "reviewed" in cli(repo(tmp_path / "on", require_review=True), "gate", "unit").stdout
 
 
 def test_the_gate_refuses_an_unreviewed_revision(tmp_path):
@@ -243,6 +318,6 @@ def test_the_harness_does_not_invoke_a_model():
         assert banned not in source.lower(), f"review.py reaches for {banned}"
 
 
-def test_the_bundle_is_not_committable(tmp_path):
+def test_the_bundle_is_not_committable():
     """It contains a whole diff and gets regenerated constantly."""
     assert BUNDLE in (ROOT / ".gitignore").read_text(encoding="utf-8")
