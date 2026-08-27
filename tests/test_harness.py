@@ -290,7 +290,8 @@ def test_config_round_trips(tmp_path):
     cfg = load_config(tmp_path / "checks.toml")
     assert cfg.project == "demo"
     assert cfg.checks["unit"].cmd == "pytest -q"
-    assert cfg.protected == ["tests/"]
+    assert "tests/" in cfg.protected
+    assert "conftest.py" in cfg.protected, "a runner's config is part of the grader"
 
 
 def test_config_rejects_duplicate_names(tmp_path):
@@ -385,10 +386,15 @@ def test_a_void_row_cannot_satisfy_the_gate(home, tmp_path):
 
 
 def test_a_real_red_still_satisfies_the_gate(home, tmp_path):
-    """The guard must pass on legitimate work, not only block the bad case."""
+    """The guard must pass on legitimate work, not only block the bad case.
+
+    The rows carry `expect=1` because the check does. A check that inverts
+    the expected code is legitimate - `expect` is part of its identity, so
+    the evidence has to have been gathered under the same value.
+    """
     trace = Trace("realred")
-    trace.append(FAILING.name, FAILING.cmd, "red", False, 1, "assert 1 == 2")
-    trace.append(FAILING.name, FAILING.cmd, "run", True, 1, "")
+    trace.append(FAILING.name, FAILING.cmd, "red", False, 1, "assert 1 == 2", 1)
+    trace.append(FAILING.name, FAILING.cmd, "run", True, 1, "", 1)
     inverted = Check(name=FAILING.name, cmd=FAILING.cmd, expect=1)
     verdict = evaluate(trace, inverted, tmp_path)
     assert verdict.saw_red is True

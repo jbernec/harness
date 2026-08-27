@@ -14,6 +14,34 @@ from pathlib import Path
 
 DEFAULT_TIMEOUT = 900
 
+# Protecting `tests/` alone is not enough. A runner reads configuration from
+# outside its test directory, and that configuration can make every test
+# vanish while still exiting 0 - a root `conftest.py` that skips everything
+# was demonstrated doing exactly that, with the guard reporting no change.
+#
+# Listed here: files whose only job is to configure the grader. Deliberately
+# NOT listed: pyproject.toml and setup.cfg. They configure the grader too,
+# but they are also where dependencies live, so protecting them by default
+# would fire on ordinary work - and a guard that cries wolf gets switched
+# off, which catches nothing at all.
+#
+# If your pytest config lives in pyproject.toml, add it to `protected`
+# yourself. That is a decision worth making on purpose.
+#
+# This list is not exhaustive and cannot be: anything the check command reads
+# can influence it. It covers the common runners.
+DEFAULT_PROTECTED = [
+    "tests/",
+    "conftest.py",
+    "*conftest.py",
+    "pytest.ini",
+    "tox.ini",
+    ".rspec",
+    "jest.config.js",
+    "jest.config.ts",
+    "vitest.config.ts",
+]
+
 # Exit codes that mean the shell could not run the command at all. A red from
 # one of these says nothing about the code under test.
 CANNOT_RUN = {
@@ -211,7 +239,7 @@ def load_config(path: Path) -> Config:
     return Config(
         project=project,
         checks=checks,
-        protected=list(data.get("protected", ["tests/"])),
+        protected=list(data.get("protected", DEFAULT_PROTECTED)),
         guard_ignore=list(data.get("guard_ignore", DEFAULT_GUARD_IGNORE)),
         spec=data.get("spec", "spec.md"),
         harness_version=str(data.get("harness_version", "")),

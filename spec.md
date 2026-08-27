@@ -118,6 +118,22 @@ answer key have not drifted apart.
 status: implemented
 check: docs_are_true
 
+### R-018  Bypasses that worked once do not work again
+Every attack found against a release is replayed as a test. A fix without a
+replay is undone by the next refactor with nobody noticing, because what it
+broke is invisible until someone attacks it again.
+
+status: implemented
+check: security
+
+### R-019  Limits are stated, not implied
+Where a guarantee cannot be enforced in code, the documentation says so in
+those words. A tool that sounds safer than it is spends trust it has not
+earned.
+
+status: implemented
+check: docs_are_true
+
 ### R-015  Whether any of this is worth doing
 Whether the four links are the right four, whether the ceremony costs more
 than the errors it prevents, whether a person would rather ship. No command
@@ -126,6 +142,20 @@ harness could tell.
 
 status: agreed
 gate: human
+
+### R-016  A starting point works before anyone edits it
+Every example config parses, loads, and is internally consistent. The first
+thing someone copies must not fail on their machine.
+
+status: implemented
+check: examples_are_usable
+
+### R-017  The reasons for past choices survive the session
+Decisions are recorded, dated, uniquely numbered and append-only, and a
+refusal that tells you to read something names a document that exists.
+
+status: implemented
+check: examples_are_usable
 
 ## Notes
 

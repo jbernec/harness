@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 
-__version__ = "0.6.1"
+__version__ = "0.7.0"
 
 VERSION = re.compile(r"^(\d+)\.(\d+)(?:\.(\d+))?")
 
@@ -78,9 +78,8 @@ def status(pinned: str, installed: str) -> dict:
             if ok
             else (
                 f"this project was gated with harness {pinned}, but {installed} "
-                f"is installed. Either install {pinned} or, if you have read "
-                f"what changed, set harness_version = \"{installed}\" in "
-                "checks.toml."
+                f"is installed. Either install {pinned}, or read CHANGELOG.md "
+                f"and set harness_version = \"{installed}\" in checks.toml."
             )
         ),
     }

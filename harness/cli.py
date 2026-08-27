@@ -76,7 +76,7 @@ def cmd_red(cfg, args, cwd, trace) -> int:
     # phase the gate ignores, so it is auditable without counting as red.
     void = None if result.ok else did_not_run(check, result.exit_code)
     phase = "void" if void else "red"
-    trace.append(check.name, check.cmd, phase, result.ok, result.exit_code, result.output)
+    trace.append(check.name, check.cmd, phase, result.ok, result.exit_code, result.output, check.expect)
 
     if result.ok:
         msg = (
@@ -118,7 +118,7 @@ def cmd_run(cfg, args, cwd, trace) -> int:
     # Same rule as red: `run` also writes rows the gate reads for saw_red, so
     # a check that never ran must not become red evidence by the back door.
     void = None if result.ok else did_not_run(check, result.exit_code)
-    trace.append(check.name, check.cmd, "void" if void else "run", result.ok, result.exit_code, result.output)
+    trace.append(check.name, check.cmd, "void" if void else "run", result.ok, result.exit_code, result.output, check.expect)
 
     _emit(
         {"ok": result.ok, "check": check.name, "exit_code": result.exit_code, **({"reason": f"did not run: {void}"} if void else {})},
@@ -185,7 +185,7 @@ def _run_all(cfg, args, cwd, trace) -> int:
         void = None if result.ok else did_not_run(check, result.exit_code)
         trace.append(
             check.name, check.cmd, "void" if void else "run",
-            result.ok, result.exit_code, result.output,
+            result.ok, result.exit_code, result.output, check.expect,
         )
         results.append((check, result, void))
 
@@ -260,7 +260,7 @@ def cmd_gate(cfg, args, cwd, trace) -> int:
         reason = guard["reason"]
 
     trace.append(check.name, check.cmd, "gate", ok, 0 if ok else 1,
-                 f"{reason} | guard: {guard['reason']}")
+                 f"{reason} | guard: {guard['reason']}", check.expect)
 
     if args.json:
         payload = {

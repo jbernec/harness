@@ -39,10 +39,19 @@ def evaluate(trace: Trace, check: Check, cwd: Path) -> GateResult:
     saw_red = False
     green_after_red = False
     for row in trace.rows():
-        # A check is identified by name AND command: editing the command to
-        # something weaker makes it a different check, so old RED evidence
-        # no longer applies to it.
+        # A check is identified by name, command AND expected exit code.
+        #
+        # The command alone is not enough. `expect` decides what "passing"
+        # means, so flipping it from 0 to 1 turns a still-failing test into a
+        # green one while the command string never changes - and the old red
+        # would carry straight over. Attacked and confirmed: the gate exited
+        # 0 on a test that was failing.
         if row.get("check") != check.name or row.get("cmd") != check.cmd:
+            continue
+        # Rows written before this field existed carry no `expect`. Treating
+        # a missing value as "matches" would reopen the hole, so it must be
+        # stated. Old evidence is refused rather than trusted.
+        if row.get("expect") != check.expect:
             continue
         if row.get("phase") not in ("red", "run"):
             continue

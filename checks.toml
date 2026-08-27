@@ -5,7 +5,7 @@
 
 project = "harness"
 spec = "spec.md"
-harness_version = "0.6.1"
+harness_version = "0.7.0"
 
 # The tests grade this repo, so this repo does not get to edit them. The
 # reviewer fixture is here too: a fixture the author can adjust is a fixture
@@ -52,16 +52,24 @@ description = "nothing was superseded or removed without saying why"
 
 [[check]]
 name = "security"
-requirement_hash = "R-004:f0a95f,R-005:358422,R-006:2e05aa,R-007:5ebe18"
-cmd = "python -m pytest tests/test_harness.py -q -k \"forge or tamper or chain or key or guard\""
+requirement_hash = "R-004:f0a95f,R-005:358422,R-006:2e05aa,R-007:5ebe18,R-018:5b9820"
+cmd = "python -m pytest tests/test_attacks.py tests/test_harness.py -q"
 expect = 0
-files = ["harness/trace.py", "harness/guard.py", "harness/gate.py"]
-description = "the attacks that must keep failing"
+files = ["harness/trace.py", "harness/guard.py", "harness/gate.py", "harness/check.py"]
+description = "every bypass that worked once, replayed"
 
 [[check]]
 name = "docs_are_true"
-requirement_hash = "R-013:154da4,R-014:d5dd49"
+requirement_hash = "R-013:154da4,R-014:d5dd49,R-019:fafed4"
 cmd = "python -m pytest tests/test_docs.py tests/test_reviewer.py -q"
 expect = 0
 files = ["README.md", "docs/", "reviewer/", "AGENTS.md"]
 description = "links resolve, no stale counts, the fixture matches its answers"
+
+[[check]]
+name = "examples_are_usable"
+requirement_hash = "R-016:cf8317,R-017:e47a8a"
+cmd = "python -m pytest tests/test_examples.py -q"
+expect = 0
+files = ["examples/", "checks.toml.example", "CHANGELOG.md", "decisions.md"]
+description = "the first thing anyone copies parses, and the memory files are kept"

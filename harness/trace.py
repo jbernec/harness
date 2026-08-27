@@ -42,7 +42,22 @@ def load_key() -> bytes:
 
 
 def _canonical(row: dict) -> bytes:
-    body = {k: row[k] for k in ("ts", "check", "cmd", "phase", "ok", "exit_code", "evidence")}
+    """The fields the MAC commits to.
+
+    `expect` is in here because it decides what "passing" means. Leaving it
+    out would let the value be edited after the fact without breaking the
+    chain, and a row that says 'this passed' would silently change its
+    meaning.
+
+    Rows written before the field existed have no `expect`; they canonicalise
+    without it, so old chains still verify. The gate refuses to reuse them as
+    evidence, which is the right place to draw that line - the evidence is
+    intact, it just no longer says enough.
+    """
+    keys = ("ts", "check", "cmd", "phase", "ok", "exit_code", "evidence")
+    body = {k: row[k] for k in keys}
+    if "expect" in row:
+        body["expect"] = row["expect"]
     return json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
 
 
@@ -53,12 +68,40 @@ def row_mac(row: dict, key: bytes) -> str:
     return mac.hexdigest()
 
 
+def safe_project(project: str) -> str:
+    """A project name is a directory name, not a path.
+
+    `project = "../../elsewhere"` in checks.toml would put the trace outside
+    HARNESS_HOME entirely - overwriting another project's evidence, or
+    landing somewhere the agent can reach. The name comes from a file the
+    agent can write, so it does not get to be a path.
+    """
+    name = (project or "").strip()
+    if not name:
+        raise ValueError("project name is empty")
+    if name in (".", "..") or any(sep in name for sep in ("/", "\\", "\x00")):
+        raise ValueError(
+            f"project name {project!r} is not a plain name - it must not contain "
+            "a path separator, because the trace directory is derived from it"
+        )
+    if Path(name).is_absolute() or Path(name).name != name:
+        raise ValueError(f"project name {project!r} is not a plain name")
+    return name
+
+
 class Trace:
     """One append-only chained log per project."""
 
     def __init__(self, project: str) -> None:
-        self.project = project
-        self.path = harness_home() / project / "trace.jsonl"
+        self.project = safe_project(project)
+        home = harness_home().resolve()
+        path = (home / self.project / "trace.jsonl").resolve()
+        # Belt and braces: even with the name validated, confirm the result
+        # did not escape. Symlinks and case-folding are easier to check for
+        # than to reason about.
+        if home not in path.parents:
+            raise ValueError(f"trace path {path} escapes {home}")
+        self.path = path
         self.key = load_key()
 
     def _rows_raw(self) -> tuple[list[dict], list[int]]:
@@ -87,7 +130,8 @@ class Trace:
         rows = self.rows()
         return rows[-1]["mac"] if rows else GENESIS
 
-    def append(self, check: str, cmd: str, phase: str, ok: bool, exit_code: int, evidence: str = "") -> dict:
+    def append(self, check: str, cmd: str, phase: str, ok: bool, exit_code: int,
+               evidence: str = "", expect: int = 0) -> dict:
         """Append one chained event. `phase` is 'red', 'run', 'gate',
         'void', or 'review'."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -95,6 +139,7 @@ class Trace:
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
             "check": check,
             "cmd": cmd,
+            "expect": expect,
             "phase": phase,
             "ok": ok,
             "exit_code": exit_code,
